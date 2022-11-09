@@ -88,10 +88,13 @@ Options:
   -V, --version
           Print version information
 ```
+> **NOTE**: The program can load/run/debug a hex file (in I8HEX format) rather than an assembly 
+> language file but it requires the file to have the .hex extension. 
+> You still have to specify that you want to `--run` the program, i.e., `6809 -r my_program.hex`
+
 
  ## Assembler
 
- ...
  There are a few examples of assembly language programs in the [test](./test) directory that show several features of the assembler.
  The program [mbadd.asm](./test/mbadd.asm) demonstrates macros:
  ```
@@ -118,6 +121,15 @@ Options:
 ;! s = #heap
 ```
 
+> **NOTE**:
+> Assembly language programs (like Microsoft Extended Basic) relied on the fact that 
+> expressions in operands would be evaluated left-to-right rather than following the 
+> regular PEMDAS rule. Thus, the assembler uses left-to-right as the default order
+> of operations. In other words, the expression `2+8/2` evaluates to 5 rather than 6.
+> However, you can just specify `-p` or `--pemdas` to change this. Also, whether in
+> PEMDAS mode or not, the assembler supports parentheses so that `2+(8/2)` will 
+> always evaluate to 6.
+
 ## Output Files
 By default, the assembler just compiles the given .asm/.s file into 6809 machine code,
 reports success or failure, and exits. 
@@ -128,12 +140,7 @@ This will cause the assembler to generate three files (for a given input file na
 3. A hex file named *filename.hex*. This is a text file in [Intel I8HEX format](https://en.wikipedia.org/wiki/Intel_HEX) containing the program in memory-mapped machine code. It is used to move the program to a device.
 
 
-**WARNING**: The assembler will not check for the prior existence of any of these files and will simply try to overwrite them if they already exist.
-
-**NOTE**: The program can load/run/debug a hex file rather than an assembly language file but it requires the file to have the .hex extension. You still have to specify that you want to ```--run``` the program:
-```
-6809 -r my_program.hex
-```
+> **WARNING**: The assembler will not check for the prior existence of any of these files and will simply try to overwrite them if they already exist.
 
 
 ## Interacting with programs
