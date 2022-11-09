@@ -1,0 +1,6 @@
+/target
+*.lst
+*.sym
+*.hex
+.DS_Store
+.vscode
