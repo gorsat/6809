@@ -13,7 +13,7 @@ and run them much faster than they ever ran on the real processor.
 It might be useful for someone doing some retro work and it's definitely entertaining for those who want to relive the magic of early 1980s computing.
 
 ## Getting Started
-To sanity check the repo, you can run a quick build and test: 
+This program runs on Mac, Windows and Linux (only tested on Ubuntu). To sanity check it, you can run a quick test: 
 ```
 cargo test
 ```
