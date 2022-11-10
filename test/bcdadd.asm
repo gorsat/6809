@@ -28,5 +28,5 @@ start   lds     #code
         jsr     addbcd
         swi
 
-; expected result (run with -d option to check)
+; expected result (run with -r option to check)
 ;! data = #$8904 ;489 in bcd with least significant byte first

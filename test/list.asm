@@ -53,7 +53,7 @@ elt1 rmb	2
 elt2 rmb	2		
 head rmb	2		
 
-; expected results (run with -d flag to check)
+; expected results (run with -r flag to check)
 ;! head = #elt1
 ;! elt1 = 0
 ;! x = #elt2

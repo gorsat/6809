@@ -14,5 +14,5 @@ sum001  adda    ,x+
 data    org     $1000
         fcb     13,22,34
 
-; expected result (run with -d option to check)
+; expected result (run with -r option to check)
 ;! a = #$45
