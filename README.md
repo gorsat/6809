@@ -1,4 +1,4 @@
-# A 6809 Assembler, Simulator and Debugger written in Rust.
+# 6809 Assembler, Simulator, Debugger (in rust)
 
 The venerable [Motorola 6809](https://en.wikipedia.org/wiki/Motorola_6809) was the first microprocessor I knew.
 I have great fondness for it and when I was looking for a project through which to learn Rust,
@@ -94,41 +94,69 @@ Options:
 
 
  ## Assembler
+The assembler supports a number of features including:
+- **simple macros** - See below. Macros are expanded prior to the build process and parameters are supported.
+- **test criteria** - See below. Test criteria are evaluated after the completion of a `--run`.
+- **direct mode addressing** - you can force direct mode by prepending a '\<' to an 8-bit address
+- **current location reference** - you can use '\*' to refer to the "current location" in the program, so that, for example, the statement `jmp *` is an infinite loop.
+- **automatic branch extension** - if you use a Bxx instruction but the destination is too far away then it will be automatically converted to an LBxx instruction (and you can turn this off with the `--lbr-disable` option)
+- **multiple literal types** - in addition to decimal you can use hex values (`$ff`) and binary (`%0101`) and character literals (`'Z`) in operands
+- **left-to-right and pemdas** - 
+Assembly language programs (like Microsoft Extended Basic) relied on the fact that 
+expressions in operands would be evaluated left-to-right rather than following the 
+regular PEMDAS rule. Thus, the assembler uses left-to-right as the default order
+of operations. In other words, the expression `2+8/2` evaluates to 5 rather than 6.
+However, you can just specify `-p` or `--pemdas` to change this. Also, whether in
+PEMDAS mode or not, the assembler supports parentheses so that `2+(8/2)` will 
+always evaluate to 6.
 
+### Macros
  There are a few examples of assembly language programs in the [test](./test) directory that show several features of the assembler.
- The program [mbadd.asm](./test/mbadd.asm) demonstrates macros:
+ The program [mbadd.asm](./test/mbadd.asm) includes the following trivial macro definition:
  ```
- * Simple macros are supported
-    .macro	clc
-        andcc	#$fe
-    .endm
-* Here's an example with a parameter
     .macro my_bne
         bne @0
     .endm
 ```
-...as well as test criteria (for which there is some documentation in [test.rs](src/test.rs))
+Once defined, this macro can be used anywhere you'd use a regular instruction and it will be expanded with parameters, so that, for example, the statement
 ```
-;
-; The lines beginning with ";!" each define a TestCriterion (see test.rs)
-; When the program is run with the --run (and not the --debug) option
-; these criteria will be checked after the program is run.
-;! output = #0
-;! output+1 = #0
-;! output+2 = #0
-;! output+3 = #$80
-;! x = #heap+4
-;! s = #heap
+     my_bne LOOP
 ```
+would be replaced with
+```
+     bne LOOP
+```
+prior to the build process. Macros are not limited in terms of number of lines or parameters. I will caveat this by saying that I have not got around to adding signficant macro tests to the test suite.
 
-> **NOTE**:
-> Assembly language programs (like Microsoft Extended Basic) relied on the fact that 
-> expressions in operands would be evaluated left-to-right rather than following the 
-> regular PEMDAS rule. Thus, the assembler uses left-to-right as the default order
-> of operations. In other words, the expression `2+8/2` evaluates to 5 rather than 6.
-> However, you can just specify `-p` or `--pemdas` to change this. Also, whether in
-> PEMDAS mode or not, the assembler supports parentheses so that `2+(8/2)` will 
-> always evaluate to 6.
+### Test Criteria
+Test criteria are really a feature of the runtime rather than the assembler, but it feels like an assembler feature so I'm covering it here.
+This provides a very quick and simple way to test assembly language programs without having to get into the debugger. 
+As an example, you can quickly confirm left-to-right expression evaluation with the following program
+```
+    lda #2+8/2
+    ldb #2+(8/2)
+    swi
+;! a = #5
+;! b = #6
+```
+The comments that start with a bang are the test criteria.
+There is some documentation on their syntax and rules in [test.rs](src/test.rs).
+
+A program cleanly exits by executing a software interrupt instruction (`swi`).
+At that point, the runtime checks to see if there are any test criteria in the program and, if there are, they are evaluated. 
+If you run the little program listed above:
+```
+cargo run -- test/ooo.asm -r
+```
+you'll get the following output:
+```
+INFO: Executing ooo.asm
+INFO: Encountered SWI. Program execution terminated.
+INFO: Validating 2 test criteria
+	A = #$05 --> PASS
+	B = #$06 --> PASS
+```
+I have found test criteria incredibly useful and I highly recommend their use for anyone writing 6809 assembly language code.
 
 ## Output Files
 By default, the assembler just compiles the given .asm/.s file into 6809 machine code,
@@ -273,6 +301,14 @@ the ```-r``` (--run) option for the simulator.
 ```
 % cargo run -r -- Basic.asm -r
 ```
+## Documentation
+I've included some rustdoc comments throughout the source.
+These are most useful when you use `cargo doc` to read them in the browser, i.e.:
+```
+cargo doc --no-deps --open
+```
+This command builds the html doc pages and opens the default browser to display them.
+
 ## Resources
 You can find a lot of documentation and enthusiasm for the 6809 on the web.
 Here are just a few resources that may be useful in conjunction with this project:
