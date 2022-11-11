@@ -16,10 +16,12 @@ fn ft_index(op_code: u16) -> Option<usize> {
     }
 }
 pub fn opcode_to_flavor(op: u16) -> Option<&'static Flavor> {
+    // SAFETY: FLAVOR_TABLE is a static mut that is initialized once by init()
     unsafe { instructions::FLAVOR_TABLE[ft_index(op)?].as_ref() }
 }
 pub fn name_to_descriptor(name: &str) -> Option<&'static Descriptor> {
-    unsafe { DESC_BY_NAME.as_ref()?.get(name).map(|&d| d) }
+    // SAFETY: DESC_BY_NAME is a static mut that is initialized once by init()
+    unsafe { DESC_BY_NAME.as_ref()?.get(name).copied() }
 }
 /// Initialize static lookup tables.
 pub fn init() {
@@ -28,6 +30,7 @@ pub fn init() {
         for desc in DESCRIPTORS {
             dbn.insert(desc.name, desc);
             for detail in desc.md {
+                // SAFETY: FLAVOR_TABLE is a static mut that is initialized once by init()
                 unsafe {
                     FLAVOR_TABLE[ft_index(detail.op).unwrap()] = Some(Flavor {
                         desc,
@@ -37,13 +40,14 @@ pub fn init() {
                 }
             }
         }
+        // SAFETY: DESC_BY_NAME is a static mut that is initialized once by init()
         unsafe { DESC_BY_NAME = Some(dbn) }
     });
 }
 
 /// All the supported addressing modes. Note that the assembler's notion of addressing mode
 /// can initially vary from what the runtime eventually sees.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AddressingMode {
     Immediate = 0,
     Direct = 1,
@@ -135,7 +139,7 @@ pub mod TEPostByte {
     pub fn is_valid(pb: u8) -> bool {
         let r1 = pb >> 4;
         let r2 = pb & 0xf;
-        return (r1 != r2) && (((r1 >= A) && (r2 >= A)) || ((r1 < A) && (r2 < A)));
+        (r1 != r2) && (((r1 >= A) && (r2 >= A)) || ((r1 < A) && (r2 < A)))
     }
     pub fn make(src: &str, dst: &str) -> Option<u8> {
         if let Some(s) = nibble(src) {
@@ -179,7 +183,7 @@ pub mod PPPostByte {
     pub const B: u8 = 0b00000100;
     pub const A: u8 = 0b00000010;
     pub const CC: u8 = 0b00000001;
-    pub const _STR: [&'static str; 8] = ["CC", "A", "B", "DP", "X", "Y", "U", "PC"];
+    pub const _STR: [&str; 8] = ["CC", "A", "B", "DP", "X", "Y", "U", "PC"];
     // the given string must be uppercase
     pub fn from_str(reg: &str) -> Option<u8> {
         match reg {
@@ -232,6 +236,7 @@ pub mod PPPostByte {
 
 /// Enumerates instructions that cause execution to jump out of the simulator.
 /// Hardware interrupts are not supported but should eventually be represented here as well.
+#[allow(clippy::upper_case_acronyms)]
 pub enum Meta {
     SWI,
     SWI2,
@@ -312,10 +317,10 @@ pub struct Instance {
     /// The human readable operand
     pub operand: Option<String>,
 }
-const BAD_FLAVOR: &'static Flavor = &Flavor {
+const BAD_FLAVOR: &Flavor = &Flavor {
     desc: &DESCRIPTORS[0],
     mode: AddressingMode::Error,
-    detail: &MODE_DETAIL_ERROR,
+    detail: MODE_DETAIL_ERROR,
 };
 
 impl Instance {
@@ -355,7 +360,7 @@ impl ModeDetail {
     }
 }
 type M = ModeDetail;
-pub const MODE_DETAIL_ERROR: &'static ModeDetail = &M {
+pub const MODE_DETAIL_ERROR: &ModeDetail = &M {
     op: 0x0000,
     clk: 0,
     sz: 0,
@@ -366,7 +371,7 @@ pub const MODE_DETAIL_ERROR: &'static ModeDetail = &M {
 type EvalFn = fn(&Core, &mut Outcome) -> Result<(), Error>;
 
 /// Enumerates the general operand type associated with an instruction.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum OperandType {
     /// no operand (same as OT::Mode and AddressingMode::Inherent)
     None,
@@ -409,12 +414,7 @@ impl Debug for Descriptor {
 }
 impl Descriptor {
     pub fn get_mode_detail(&self, am: AddressingMode) -> Option<&'static ModeDetail> {
-        for m in self.md {
-            if m.addressing_mode() == am {
-                return Some(m);
-            }
-        }
-        None
+        self.md.iter().find(|&m| m.addressing_mode() == am)
     }
     // return true if this instruction uses only inherent addressing mode
     pub fn is_inherent(&self) -> bool { self.md.len() == 1 && self.md[0].addressing_mode() == AddressingMode::Inherent }
@@ -1017,7 +1017,7 @@ use registers::Name;
 // instruction table
 //
 #[rustfmt::skip]
-pub const DESCRIPTORS: &'static [Descriptor] = &[
+pub const DESCRIPTORS: &[Descriptor] = &[
  Descriptor{name:"ABX", 	eval:__abx,	reg: Name::Z, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x3A,clk:1,sz:1,am:4},]},
  Descriptor{name:"ADCA",	eval:__adc,	reg: Name::A, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x89,clk:2,sz:2,am:0},M{op:0x99,clk:3,sz:2,am:1},M{op:0xA9,clk:4,sz:2,am:2},M{op:0xB9,clk:4,sz:3,am:3},]},
  Descriptor{name:"ADCB",	eval:__adc,	reg: Name::B, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0xC9,clk:2,sz:2,am:0},M{op:0xD9,clk:3,sz:2,am:1},M{op:0xE9,clk:4,sz:2,am:2},M{op:0xF9,clk:4,sz:3,am:3},]},

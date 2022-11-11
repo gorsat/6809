@@ -42,7 +42,7 @@ help!(cmd_load, "load <file> - Load Symbols; load symbols from .sym file");
 help!(cmd_sym, "sym [<loc>] - List all symbols or show symbols at <loc>");
 help!(cmd_h, "h - Help; display this help text");
 
-static COMMAND_HELP: &'static [&'static str] = &[
+static COMMAND_HELP: &[&str] = &[
     cmd_g,
     cmd_his,
     cmd_c,
@@ -68,7 +68,7 @@ static COMMAND_HELP: &'static [&'static str] = &[
     "<loc> syntax: Hex address (e.g. FF0A) or '?' followed by symbol (e.g. \"?START\")",
 ];
 
-/// Tracks the state of the debugger's list mode. 
+/// Tracks the state of the debugger's list mode.
 pub struct ListMode {
     pub lines_remaining: u16,
     pub saved_ctx: registers::Set,
@@ -136,7 +136,7 @@ impl std::fmt::Display for Breakpoint {
 }
 
 /// Tracks the state of the debugger's step mode.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum StepMode {
     Off,
     Stepping,
@@ -165,8 +165,8 @@ impl Core {
             };
             _ = stdout().flush();
             _ = stdin().read_line(&mut input);
-            let cmd: Vec<&str> = input.trim().split_whitespace().collect();
-            if cmd.len() == 0 {
+            let cmd: Vec<&str> = input.split_whitespace().collect();
+            if cmd.is_empty() {
                 continue;
             }
             match cmd[0].to_lowercase().as_str() {
@@ -220,18 +220,19 @@ impl Core {
                     let mut addr = self.reg.pc;
                     let mut num = 16;
                     if cmd.len() > 1 {
-                        if !self.parse_address(cmd[1]).map_or(false, |a| {
-                            addr = a;
-                            true
-                        }) {
+                        if let Some(a) = self.parse_address(cmd[1]) {
+                            addr = a
+                        } else {
                             println!("Invalid address or symbol");
                             show_help!(cmd_l);
                             continue;
                         }
                     }
                     if cmd.len() > 2 {
-                        self.parse_number(cmd[2]).map(|n| num = n.u16());
-                        // ignore bad count
+                        if let Some(n) = self.parse_number(cmd[2]) {
+                            num = n.u16()
+                        }
+                        // (else) ignore bad count
                     }
                     self.list_mode = Some(ListMode {
                         lines_remaining: num,
@@ -367,7 +368,7 @@ impl Core {
                     break;
                 }
                 "sym" => {
-                    if self.sym_to_addr.len() == 0 {
+                    if self.sym_to_addr.is_empty() {
                         println!("No symbols loaded. Use 'load' to load symbols.");
                         continue;
                     }
@@ -384,7 +385,7 @@ impl Core {
                         println!("{} symbols listed.", s.len());
                         continue;
                     }
-                    if cmd[1].starts_with("?") {
+                    if cmd[1].starts_with('?') {
                         let name = &cmd[1][1..];
                         if let Some(addr) = self.symbol_by_name(name) {
                             println!("Symbol {} = {:04X}", name, addr);
@@ -393,7 +394,7 @@ impl Core {
                                 .iter()
                                 .filter_map(|s| if s.as_str() != name { Some(s.as_str()) } else { None })
                                 .collect::<Vec<&str>>();
-                            if others.len() > 0 {
+                            if !others.is_empty() {
                                 println!("Additional symbols: {}", others.join(", "));
                             }
                         } else {
@@ -455,10 +456,9 @@ impl Core {
                     return Err(Error::new(ErrorKind::IO, None, msg.as_str()));
                 }
                 let line = res.unwrap();
-                let comps: Vec<&str> = line.split(",").collect();
+                let comps: Vec<&str> = line.split(',').collect();
                 if comps.len() != 2 {
-                    let msg = format!("Invalid symbol file format");
-                    return Err(Error::new(ErrorKind::IO, None, msg.as_str()));
+                    return Err(Error::new(ErrorKind::IO, None, "Invalid symbol file format"));
                 }
                 if let Ok(addr) = u16::from_str_radix(comps[0], 16) {
                     self.add_symbol(addr, comps[1]);
@@ -484,8 +484,7 @@ impl Core {
                 }
             }
         }
-        let msg = format!("Failed to process symbol file path");
-        Err(Error::new(ErrorKind::IO, None, msg.as_str()))
+        Err(Error::new(ErrorKind::IO, None, "Failed to process symbol file path"))
     }
     fn parse_breakpoint_index(&self, index_in_str: &str) -> Option<usize> {
         let mut index = None;
@@ -503,7 +502,7 @@ impl Core {
                 && self.breakpoints[i].active
                 && (!watch_only || self.breakpoints[i].watch)
             {
-                Some(&self.breakpoints[i]);
+                return Some(&self.breakpoints[i]);
             }
         }
         None
@@ -530,16 +529,11 @@ impl Core {
         // add symbol to sym_to_addr table
         self.sym_to_addr.insert(name.to_string(), addr);
     }
-    pub fn symbol_by_name(&self, name: &str) -> Option<u16> { self.sym_to_addr.get(name).map(|u| *u) }
+    pub fn symbol_by_name(&self, name: &str) -> Option<u16> { self.sym_to_addr.get(name).copied() }
     pub fn symbol_by_addr(&self, addr: u16) -> Option<&Vec<String>> { self.addr_to_sym.get(&addr) }
     fn parse_address(&self, addr_sym: &str) -> Option<u16> {
-        if addr_sym.starts_with("?") {
-            let name = &addr_sym[1..];
-            if let Some(addr) = self.symbol_by_name(name) {
-                Some(addr)
-            } else {
-                None
-            }
+        if let Some(name) = addr_sym.strip_prefix('?') {
+            self.symbol_by_name(name)
         } else if let Ok(addr) = u16::from_str_radix(addr_sym, 16) {
             Some(addr)
         } else {
@@ -551,19 +545,17 @@ impl Core {
         let mut negative = false;
         let mut s = str_num.to_string();
 
-        if s.starts_with("-") {
+        if s.starts_with('-') {
             negative = true;
             s.remove(0);
         }
 
-        if s.starts_with("0x") {
-            if let Ok(val) = u16::from_str_radix(&s[2..], 16) {
+        if let Some(hex) = s.strip_prefix("0x") {
+            if let Ok(val) = u16::from_str_radix(hex, 16) {
                 number = Some(u8u16::from_u16_shrink(val));
             }
-        } else {
-            if let Ok(val) = s.parse::<u16>() {
-                number = Some(u8u16::from_u16_shrink(val));
-            }
+        } else if let Ok(val) = s.parse::<u16>() {
+            number = Some(u8u16::from_u16_shrink(val));
         }
 
         number.map(|v| {
@@ -632,7 +624,7 @@ impl Core {
         let hit_breakpoint = || -> bool {
             let mut breakpoint = false;
             // if we hit a watch then break into the debugger
-            if self.watch_hits.len() > 0 {
+            if !self.watch_hits.is_empty() {
                 for addr in &self.watch_hits {
                     if let Some(bp) = self.get_breakpoint_by_addr(*addr, true) {
                         println!("Paused at watch breakpoint: {}", bp);
@@ -649,7 +641,7 @@ impl Core {
             }
             breakpoint
         };
-        return hit_breakpoint();
+        hit_breakpoint()
     }
     pub fn post_instruction_debug_check(&mut self, instruction_pc: u16, outcome: &instructions::Outcome) {
         if let StepMode::StepOverPending(addr) = self.step_mode {
@@ -673,7 +665,10 @@ impl Core {
                 sym.push('+');
             }
             let mut extra_data = String::from(outcome.dbgstr.as_ref().map_or("", |d| d.as_str()));
-            if outcome.inst.flavor.mode != instructions::AddressingMode::Inherent && self.sym_to_addr.len() > 0 {
+            // if this instruction doesn't use inherent addressing and we have symbols loaded then check to see if
+            // there is a symbol associated with the instruction's effective address and, if there is, add the
+            // symbol to the instruction display
+            if outcome.inst.flavor.mode != instructions::AddressingMode::Inherent && !self.sym_to_addr.is_empty() {
                 if let Some(syms) = self.symbol_by_addr(outcome.inst.ea) {
                     // extra_data = format!("{:04X},", outcome.inst.ea);
                     extra_data.push_str(syms[syms.len() - 1].as_str());

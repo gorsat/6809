@@ -169,7 +169,7 @@ impl Core {
     }
     /// check_criteria evaluates each TestCriterion provided and returns Err(Error) if any fail
     pub fn check_criteria(&self, criteria: &Vec<TestCriterion>) -> Result<(), Error> {
-        if criteria.len() == 0 {
+        if criteria.is_empty() {
             return Ok(());
         }
         info!(

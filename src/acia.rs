@@ -50,19 +50,19 @@ impl Acia {
             if *ttyc > 0 {
                 flags |= TDRE;
             }
-            return Ok(flags);
+            Ok(flags)
         } else if addr == self.data_register_address() {
             // try to get a byte from our cache or from the comms thread
             let pending_data = self.recv_cache.borrow().or_else(|| self.rxin.try_recv().ok());
-            if pending_data.is_some() {
+            if let Some(pending_data) = pending_data {
                 *self.recv_cache.borrow_mut() = self.rxin.try_recv().ok();
-                let byte = pending_data.unwrap();
+                let byte = pending_data;
                 acia_dbg!("ACIA read {:02X}", byte);
-                return Ok(byte);
+                Ok(byte)
             } else {
                 // user read the data register when there was no data available.
                 // result is undefined? just return a 0?
-                return Ok(0);
+                Ok(0)
             }
         } else {
             panic!("invalid ACIA read address")
@@ -112,6 +112,7 @@ impl Acia {
                             break;
                         }
                         // forward input to Core
+                        #[allow(clippy::needless_range_loop)]
                         for i in 0..size {
                             let b: u8 = match in_buf[i] {
                                 0x41..=0x5a if config::ARGS.acia_case => in_buf[i] + 0x20,

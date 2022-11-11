@@ -8,7 +8,7 @@ pub struct Error {
     pub msg: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ErrorKind {
     /// error in syntax of assembly code
     Syntax,

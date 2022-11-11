@@ -109,7 +109,7 @@ impl Core {
             op16 |= inst.buf[inst.size as usize] as u16;
             inst.size += 1;
             if inst.size == 1 && instructions::is_high_byte_of_16bit_instruction(inst.buf[0]) {
-                op16 = op16 << 8;
+                op16 <<= 8;
                 continue;
             }
             break;
@@ -141,7 +141,7 @@ impl Core {
 
         // evaluate the instruction if we're not in list mode
         if self.list_mode.is_none() {
-            (o.inst.flavor.desc.eval)(&self, &mut o)?;
+            (o.inst.flavor.desc.eval)(self, &mut o)?;
         }
         // this creates a string containing the effective address and the contents of 2 bytes at that address
         // it was helpful in debugging the assembler and runtime but it's pretty confusing otherwise.

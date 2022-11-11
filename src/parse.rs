@@ -8,7 +8,7 @@ use std::{iter::Peekable, str::Chars, vec::IntoIter};
 
 type TokenIter = Peekable<IntoIter<Token>>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     Number,
     Label,
@@ -45,11 +45,11 @@ pub struct Token {
 }
 impl Token {
     pub fn clean(&self) -> String {
-        String::from(match self.ttype {
+        match self.ttype {
             TokenType::Number => self.value.as_ref().unwrap().to_string(),
             TokenType::Register => self.raw.clone().to_uppercase(),
             _ => self.raw.clone(),
-        })
+        }
     }
     pub fn new(ttype: TokenType, raw: String, value: Option<u8u16>) -> Self { Token { ttype, raw, value } }
 }
@@ -88,8 +88,8 @@ impl ValueNode {
         ValueNode {
             token: val_or_op,
             negate,
-            left: if let Some(l) = left { Some(Box::new(l)) } else { None },
-            right: if let Some(r) = right { Some(Box::new(r)) } else { None },
+            left: left.map(Box::new),
+            right: right.map(Box::new),
         }
     }
     /// Evaluate this ValueNode given an address and LabelResolver.
@@ -126,7 +126,7 @@ impl ValueNode {
             TokenType::Add | TokenType::Sub | TokenType::Star | TokenType::Div | TokenType::Mod | TokenType::Pow => {
                 if let Some(left) = &self.left {
                     if let Some(right) = &self.right {
-                        return self._eval_binary(lr, addr, signed, &left, &right);
+                        return self._eval_binary(lr, addr, signed, left, right);
                     }
                 } else if self.token.ttype == TokenType::Star {
                     // this is a location reference; it has no child nodes
@@ -147,7 +147,7 @@ impl ValueNode {
         }
     }
     fn _eval_binary(
-        &self, lr: &dyn LabelResolver, addr: u16, signed: bool, left: &Box<ValueNode>, right: &Box<ValueNode>,
+        &self, lr: &dyn LabelResolver, addr: u16, signed: bool, left: &ValueNode, right: &ValueNode,
     ) -> Result<u8u16, Error> {
         let lhs = left.eval(lr, addr, signed)?;
         let rhs = right.eval(lr, addr, signed)?;
@@ -642,7 +642,7 @@ impl Parser {
                 _ => {}
             }
         }
-        return Err(Error::new(ErrorKind::Syntax, None, "missing label or value"));
+        Err(Error::new(ErrorKind::Syntax, None, "missing label or value"))
     }
     pub fn str_to_value_node(&self, expr: &str) -> Result<ValueNode, Error> {
         let tokens = self.tokenize(expr)?;
@@ -740,7 +740,8 @@ impl Parser {
                 '\'' => {
                     current = chars.next();
                     // if the previous token was a number then assume this is a closing quote and ignore it
-                    if output.len() == 0 || output[output.len() - 1].ttype != TokenType::Number {
+                    // For example, the programmer may have written #'C' instead of just #'C
+                    if output.is_empty() || output[output.len() - 1].ttype != TokenType::Number {
                         // otherwise, we need to parse a char here and convert it to a number
                         if current.is_none() {
                             err_msg = Some("unexpected end of string following `'`".to_string());
@@ -938,7 +939,7 @@ impl Parser {
     fn get_label_or_register(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
         let mut raw = String::new();
         while let Some(ref ch) = current {
-            if !ch.is_digit(10) && !ch.is_alphabetic() && !ch.eq(&'_') && !ch.eq(&'$') {
+            if !ch.is_ascii_digit() && !ch.is_alphabetic() && !ch.eq(&'_') && !ch.eq(&'$') {
                 break;
             }
             raw.push(*ch);

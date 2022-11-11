@@ -41,8 +41,8 @@ pub enum RegOrAddr {
 impl fmt::Display for RegOrAddr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &RegOrAddr::Reg(r) => write!(f, "{:?}", r),
-            &RegOrAddr::Addr(a) => write!(f, "${:04X}", a),
+            RegOrAddr::Reg(r) => write!(f, "{:?}", r),
+            RegOrAddr::Addr(a) => write!(f, "${:04X}", a),
         }
     }
 }
@@ -54,8 +54,8 @@ pub enum AddrOrVal {
 impl fmt::Display for AddrOrVal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &AddrOrVal::Addr(a) => write!(f, "${:04X}", a),
-            &AddrOrVal::Val(u) => write!(f, "#${}", u),
+            AddrOrVal::Addr(a) => write!(f, "${:04X}", a),
+            AddrOrVal::Val(u) => write!(f, "#${}", u),
         }
     }
 }
@@ -82,8 +82,8 @@ impl TestCriterion {
     }
     pub fn eval(&self, core: &Core) -> Result<(), Error> {
         let mut lhs_size = 1u16;
-        let lhs = self.lhs.as_ref().ok_or(general_err!("TestCriterion missing LHS"))?;
-        let rhs = self.rhs.as_ref().ok_or(general_err!("TestCriterion missing RHS"))?;
+        let lhs = self.lhs.as_ref().ok_or_else(||general_err!("TestCriterion missing LHS"))?;
+        let rhs = self.rhs.as_ref().ok_or_else(||general_err!("TestCriterion missing RHS"))?;
         let lhs_val = match lhs {
             RegOrAddr::Reg(reg) => {
                 lhs_size = registers::reg_size(*reg);

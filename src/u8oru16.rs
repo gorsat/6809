@@ -4,7 +4,7 @@ use std::fmt;
 /// It allows code that cares only about the value to focus on the value while
 /// code that cares about the size of the type can also get clear size information.
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum u8u16 {
     u8(u8),
     u16(u16),
@@ -12,8 +12,8 @@ pub enum u8u16 {
 impl fmt::Display for u8u16 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
-            &u8u16::u8(val) => format!("{:02X}", val),
-            &u8u16::u16(val) => format!("{:04X}", val),
+            u8u16::u8(val) => format!("{:02X}", val),
+            u8u16::u16(val) => format!("{:04X}", val),
         };
         write!(f, "{:width$}", s, width = f.width().unwrap_or(0))
     }
@@ -29,8 +29,8 @@ impl u8u16 {
     }
     pub fn size(&self) -> u16 {
         match self {
-            &u8u16::u8(_) => 1,
-            &u8u16::u16(_) => 2,
+            u8u16::u8(_) => 1,
+            u8u16::u16(_) => 2,
         }
     }
     pub fn from_u16_shrink(val: u16) -> u8u16 {
@@ -42,30 +42,30 @@ impl u8u16 {
     }
     pub fn is_u8(&self) -> bool {
         match self {
-            &u8u16::u8(_) => true,
-            &u8u16::u16(_) => false,
+            u8u16::u8(_) => true,
+            u8u16::u16(_) => false,
         }
     }
     pub fn u16(&self) -> u16 {
         match self {
-            &u8u16::u8(val) => val as u16,
-            &u8u16::u16(val) => val,
+            u8u16::u8(val) => *val as u16,
+            u8u16::u16(val) => *val,
         }
     }
     pub fn u8(&self) -> u8 {
         match self {
-            &u8u16::u8(val) => val,
-            &u8u16::u16(val) => (val & 0xff) as u8,
+            u8u16::u8(val) => *val,
+            u8u16::u16(val) => (val & 0xff) as u8,
         }
     }
     pub fn lsb(&self) -> u8 { self.u8() }
     pub fn msb(&self) -> Option<u8> {
         match self {
-            &u8u16::u8(_) => None,
-            &u8u16::u16(w) => Some((w >> 8) as u8),
+            u8u16::u8(_) => None,
+            u8u16::u16(w) => Some((w >> 8) as u8),
         }
     }
-    pub fn to_bytes(&self, buf: &mut [u8]) -> usize {
+    pub fn get_as_bytes(&self, buf: &mut [u8]) -> usize {
         let mut bytes = 0usize;
         if let Some(b) = self.msb() {
             buf[0] = b;
@@ -74,7 +74,6 @@ impl u8u16 {
         buf[bytes] = self.lsb();
         bytes + 1
     }
-    pub fn to_string(&self) -> String { format!("{}", self) }
     pub fn i16(self) -> i16 { self.sign_extended().u16() as i16 }
     pub fn twos_complement(self) -> Self {
         match self {

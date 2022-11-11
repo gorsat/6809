@@ -68,7 +68,7 @@ impl Macro {
         }
     }
     pub fn add_line(&mut self, line: &str) -> Result<(), Error> {
-        let s = line.split("@");
+        let s = line.split('@');
         let mut v: Vec<MacroLineSegment> = Vec::new();
         for (i, raw) in s.enumerate() {
             let f = MacroLineSegment::new(raw)?;
@@ -137,8 +137,8 @@ impl fmt::Display for ProgramLine {
 #[derive(Debug)]
 pub struct Label {
     pub name: String,         // name of label; Note: these are case sensitive!
-    pub line: Option<usize>,  // line number where the label is defined
-    addr: Option<u16>,        // address (location) of this label
+    pub line: usize,          // line number where the label is defined
+    addr: u16,                // address (location) of this label
     node: Option<ValueNode>,  // if this label is defined by EQU then it has a ValueNode
     pub refs: Vec<usize>,     // the lines that reference this label
     val_cache: Option<u8u16>, // cache of last value received from node.eval()
@@ -146,14 +146,7 @@ pub struct Label {
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let val = self.node.as_ref().map_or("<n/a>".to_string(), |v| format!("{}", v));
-        write!(
-            f,
-            "{:04} {:04x} {:10} {:4}",
-            self.line.unwrap_or(0), // todo: better value for None
-            self.addr.unwrap_or(0), // todo: better value for None
-            self.name,
-            val
-        )
+        write!(f, "{:04} {:04x} {:10} {:4}", self.line, self.addr, self.name, val)
     }
 }
 
@@ -167,11 +160,11 @@ impl LabelResolver for ProgramLabels {
 impl ProgramLabels {
     pub fn new() -> ProgramLabels { ProgramLabels { map: HashMap::new() } }
     pub fn dump(&self) {
-        if self.map.len() == 0 {
+        if self.map.is_empty() {
             println!("No symbols.")
         } else {
             let mut labels: Vec<_> = self.map.iter().map(|(_, v)| v).collect();
-            labels.sort_by(|l1, l2| l1.line.unwrap_or(0).cmp(&l2.line.unwrap_or(0)));
+            labels.sort_by(|&l1, &l2| l1.line.cmp(&l2.line));
             println!("{} symbols defined/referenced:", self.map.len());
             println!(blue!("{:4} {:4} {:10} {:4}"), "LINE", "ADDR", "LABEL", "VAL");
             for label in labels {
@@ -189,8 +182,8 @@ impl ProgramLabels {
         }
         let label = Label {
             name: name.to_string(),
-            line: Some(line),
-            addr: Some(addr),
+            line,
+            addr,
             node,
             refs: Vec::new(),
             val_cache: None,
@@ -199,11 +192,11 @@ impl ProgramLabels {
         Ok(())
     }
 
-    pub fn set_address(&mut self, name: &str, new_addr: u16) -> Result<Option<u16>, Error> {
+    pub fn set_address(&mut self, name: &str, new_addr: u16) -> Result<u16, Error> {
         if let Some(label) = self.map.get_mut(name) {
             // Note: NOT checking for overwriting an existing value!
             let old_addr = label.addr;
-            label.addr = Some(new_addr);
+            label.addr = new_addr;
             Ok(old_addr)
         } else {
             Err(Error::new(
@@ -218,9 +211,9 @@ impl ProgramLabels {
         // otherwise, the value of the label is its address
         if let Some(label) = self.map.get(name) {
             if let Some(node) = label.node.as_ref() {
-                node.eval(self, label.addr.unwrap(), true).map_or(None, |u| Some(u))
+                node.eval(self, label.addr, true).ok()
             } else {
-                label.addr.map(|a| u8u16::u16(a))
+                Some(u8u16::u16(label.addr))
             }
         } else {
             None
@@ -263,9 +256,9 @@ impl ProgramLabels {
             let s = self as *const dyn LabelResolver;
             lr = &*s as &dyn LabelResolver;
         }
-        for (_, label) in &mut self.map {
+        for label in self.map.values_mut() {
             if let Some(node) = label.node.as_ref() {
-                if let Ok(val) = node.eval(lr, label.addr.unwrap(), true) {
+                if let Ok(val) = node.eval(lr, label.addr, true) {
                     changes += label.val_cache.map_or(1, |v| if v == val { 0 } else { 1 });
                     label.val_cache = Some(val);
                 } else {
@@ -277,15 +270,12 @@ impl ProgramLabels {
     }
     // the provided range (left,right) is *inclusive*
     pub fn adjust_label_addresses(&mut self, (left, right): (u16, u16), delta: i16) {
-        for (_, label) in &mut self.map {
-            assert!(label.addr.is_some());
-            if let Some(addr) = label.addr {
-                // is its value in the given range?
-                if addr >= left && addr <= right {
-                    // adjust the value by the given delta
-                    let (new_addr, _) = addr.overflowing_add(delta as u16);
-                    label.addr = Some(new_addr);
-                }
+        for label in  self.map.values_mut() {
+            // is its value in the given range?
+            if label.addr >= left && label.addr <= right {
+                // adjust the value by the given delta
+                let (new_addr, _) = label.addr.overflowing_add(delta as u16);
+                label.addr = new_addr;
             }
         }
     }
@@ -317,7 +307,7 @@ impl ProgramSegments {
     pub fn segment_containing_address(&self, addr: u16) -> (u16, u16) {
         let mut left = 0u16;
         let mut right = 0xffffu16;
-        for (&seg_start, _) in &self.map {
+        for &seg_start in self.map.keys() {
             if addr >= seg_start {
                 left = seg_start;
             } else if addr < seg_start {
@@ -345,9 +335,9 @@ impl LabelResolver for Program {
 }
 impl fmt::Display for Program {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
+        writeln!(
             f,
-            "Program: {} lines, {} labels, {} segments\n",
+            "Program: {} lines, {} labels, {} segments",
             self.line_number,
             self.labels.map.len(),
             self.segs.map.len(),
@@ -388,9 +378,8 @@ impl Program {
         let path = Path::new(parent_filename);
         let basename = path
             .file_stem()
-            .map(|s| s.to_str())
-            .flatten()
-            .ok_or(general_err!("bad filename"))?;
+            .and_then(|s|s.to_str())
+            .ok_or_else(||general_err!("bad filename"))?;
         let mut pb = path.to_path_buf();
         pb.set_file_name(basename);
         // write out the listing file
@@ -400,12 +389,7 @@ impl Program {
         println!("wrote listing file: {}", pb.display());
         // now symbols...
         // first create a collection of (name,addr) label tuples
-        let mut labels: Vec<(&String, u16)> = self
-            .labels
-            .map
-            .iter()
-            .filter_map(|(s, l)| l.addr.map(|a| (s, a)))
-            .collect();
+        let mut labels: Vec<(&String, u16)> = self.labels.map.iter().map(|(s, l)| (s, l.addr)).collect();
         // sort them by address
         labels.sort_by(|a, b| a.1.cmp(&b.1));
         // now try to write them out to a *.sym file
@@ -418,7 +402,7 @@ impl Program {
         // now the binary...
         let mut hf = HexRecordCollection::new();
         const MAX_DATA: usize = 32;
-        let mut addr = 016;
+        let mut addr = 16;
         let mut buf = [0u8; MAX_DATA + 1];
         let mut i = 0;
         for line in &self.lines {
@@ -466,6 +450,6 @@ impl Program {
         file = File::create(&pb)?;
         hf.write_to_file(&mut file)?;
         println!("wrote hex (binary) file: {}", pb.display());
-        return Ok(());
+         Ok(())
     }
 }

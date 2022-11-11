@@ -17,7 +17,7 @@ impl BinaryObject {
     pub fn to_bytes(&self, buf: &mut [u8]) -> u16 {
         let mut bytes = 0;
         if let Some(data) = self.data.as_ref() {
-            data.iter().for_each(|&u| bytes += u.to_bytes(&mut buf[bytes..]));
+            data.iter().for_each(|&u| bytes += u.get_as_bytes(&mut buf[bytes..]));
         }
         bytes as u16
     }
@@ -74,7 +74,6 @@ pub struct Instruction {
     built: bool,
     trying_direct: bool,
 }
-fn _get_register_bitmask(_: &str) -> u8 { return 0u8; }
 impl Instruction {
     pub fn try_new(
         id: &'static instructions::Descriptor, od: OperandDescriptor, addr: u16, lr: &dyn LabelResolver, dp_dirty: bool,
@@ -455,7 +454,7 @@ impl ObjectProducer for Instruction {
                 if min_size - self.flavor.detail.op_size() == 1 {
                     // expecting a signed, 8-bit relative offset here
                     let n = diff as i16;
-                    if n > 127 || n < -128 {
+                    if !(-128..=127).contains(&n) {
                         if config::ARGS.lbr_disable {
                             return Err(syntax_err!("relative offset is out of bounds"));
                         } else {
@@ -605,6 +604,7 @@ impl ObjectProducer for Fxb {
         let mut data = Vec::new();
         for node in &self.nodes {
             let val = node.eval(lr, addr, false)?;
+            #[allow(clippy::comparison_chain)]
             if val.size() > self.bytes_per_node {
                 return Err(syntax_err!("16-bit data in FCB is invalid"));
             } else if val.size() < self.bytes_per_node {

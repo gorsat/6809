@@ -46,12 +46,12 @@ pub fn get_keyboard_input(block: bool, flush: bool) -> Option<u8> {
     let mut temp = core::mem::MaybeUninit::uninit();
     io_option(|| unsafe { libc::tcgetattr(fd, temp.as_mut_ptr()) })?;
     let mut termios = unsafe { temp.assume_init() };
-    let original = termios.clone();
+    let original = termios;
     unsafe { libc::cfmakeraw(&mut termios) };
     io_option(|| unsafe { libc::tcsetattr(fd, libc::TCSADRAIN, &termios) })?;
 
     // now read the keyboard input
-    let mut rv = read_key_inner(fd, block, flush);
+    let mut rv = read_key_inner(fd, block);
 
     // and reset the tty config to the original
     io_option(|| unsafe { libc::tcsetattr(fd, if flush { libc::TCSAFLUSH } else { libc::TCSADRAIN }, &original) })?;
@@ -66,8 +66,8 @@ pub fn get_keyboard_input(block: bool, flush: bool) -> Option<u8> {
     rv
 }
 
-fn read_key_inner(fd: i32, block: bool, drain: bool) -> Option<u8> {
-    return match read_single_char(fd) {
+fn read_key_inner(fd: i32, block: bool) -> Option<u8> {
+    match read_single_char(fd) {
         Some('\x1b') => {
             // Escape was read
             if let Some(c1) = read_single_char(fd) {
@@ -118,13 +118,10 @@ fn read_key_inner(fd: i32, block: bool, drain: bool) -> Option<u8> {
             };
             // negative timeout means that it will block indefinitely
             let ret = unsafe { libc::poll(&mut pollfd as *mut _, 1, -1) };
-            if ret < 0 {
-                return None;
-            }
-            read_key_inner(fd, block, drain)
+            if ret < 0 { None } else { read_key_inner(fd, block) }
         }
         _ => None,
-    };
+    }
 }
 
 fn read_single_char(fd: i32) -> Option<char> {
@@ -168,7 +165,7 @@ pub fn byte_from_utf8(buf: &[u8]) -> Option<u8> {
 }
 
 pub fn init() {
-    // intentionally left blank 
+    // intentionally left blank
 }
 
 pub fn flush_keyboard_input() {

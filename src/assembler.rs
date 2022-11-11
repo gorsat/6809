@@ -1,21 +1,21 @@
- //! Building a 6809 assembly language program is a multi-step process:  
- //! 
- //!  1. Identify all label definitions and references
- //!  2. Identify binary objects and their max sizes
- //!  3. Using objects' (estimated or calculated) sizes, resolve all labels to addresses
- //!  4. Using resolved labels, build objects and assign addresses to them
- //! 
- //! \[_repeat steps 3 and 4 until no size or location changes occur_\]
- //!
- //! The size of individual instructions can change through this process due
- //! to movement of other labels/objects. For instance, if an instruction was
- //! written as a relative branch but the location it branches to moves to
- //! more than 127 bytes away, then the relative branch will be converted to an
- //! absolute (long) branch which adds a byte to its size. This change may, in
- //! turn, cause some other instruction to change, and so on.
- //!   
- //! This module along with parse.rs provide most of the work required to translate
- //! from assembly language to machine code. 
+//! Building a 6809 assembly language program is a multi-step process:  
+//!
+//!  1. Identify all label definitions and references
+//!  2. Identify binary objects and their max sizes
+//!  3. Using objects' (estimated or calculated) sizes, resolve all labels to addresses
+//!  4. Using resolved labels, build objects and assign addresses to them
+//!
+//! \[_repeat steps 3 and 4 until no size or location changes occur_\]
+//!
+//! The size of individual instructions can change through this process due
+//! to movement of other labels/objects. For instance, if an instruction was
+//! written as a relative branch but the location it branches to moves to
+//! more than 127 bytes away, then the relative branch will be converted to an
+//! absolute (long) branch which adds a byte to its size. This change may, in
+//! turn, cause some other instruction to change, and so on.
+//!   
+//! This module along with parse.rs provide most of the work required to translate
+//! from assembly language to machine code.
 use super::obj::*;
 use super::parse::{OperandDescriptor, Parser};
 use super::test::TestCriterion;
@@ -135,7 +135,7 @@ impl Assembler {
                 mo = Some(m);
                 continue;
             }
-            if let Some(m) = operation.as_ref().map(|s| macros.get(s)).flatten() {
+            if let Some(m) = operation.as_ref().and_then(|s| macros.get(s)) {
                 // there is a macro to expand on this line
                 if label.is_some() {
                     // there is also a label on this line; preserve it (on its own line) before expanding the macro
@@ -163,13 +163,12 @@ impl Assembler {
                 // collect any/all args for the macro
                 let args = if let Some(a) = operand
                     .as_ref()
-                    .map(|s| self.re_macro_args.captures(s.as_str()))
-                    .flatten()
+                    .and_then(|s| self.re_macro_args.captures(s.as_str()))
                 {
                     a.get(0)
                         .unwrap()
                         .as_str()
-                        .split(",")
+                        .split(',')
                         .map(|s| s.trim())
                         .collect::<Vec<&str>>()
                 } else {
@@ -307,7 +306,7 @@ impl Assembler {
                 // theoretically, we shouldn't be able to reach this point
                 unreachable!()
             }
-            return Ok(());
+            Ok(())
         };
         for line in program.lines.iter_mut() {
             pre_build_one_line(line).map_err(|e| line_err!(line.src_line_num, e.kind, e.msg))?;
@@ -359,7 +358,7 @@ impl Assembler {
             if let Some(label) = line.label.as_ref() {
                 // update the label's address to match the line's address
                 let old_addr = program.labels.set_address(label, line.addr)?;
-                if old_addr.map_or(false, |a| a != line.addr) {
+                if old_addr!= line.addr {
                     // the label's address changed; note the change in our counter
                     changes += 1;
                 }
@@ -389,8 +388,8 @@ impl Assembler {
         }
         Ok(())
     }
-    /// Process a program line that looks like an operation. The line must be a statement 
-    /// that contains either an assembler directive or an assembly language instruction. 
+    /// Process a program line that looks like an operation. The line must be a statement
+    /// that contains either an assembler directive or an assembly language instruction.
     /// Otherwise, an Error is returned. On success, an ObjectProducer for the operation
     /// is added to the provided ProgramLine.
     fn process_op_line(
@@ -416,14 +415,14 @@ impl Assembler {
         Ok(())
     }
 
-    /// Process a program line and, if it contains a valid directive, then create an 
+    /// Process a program line and, if it contains a valid directive, then create an
     /// ObjectProducer for that directive and add it to the given ProgramLine.
     ///   
     /// Results:
     ///  - ```Ok(true)``` line was succesfully processed as a directive
     ///  - ```Ok(false)``` line is not a directive
     ///  - ```Err(Error)``` line is a directive but is invalid
-    /// 
+    ///
     fn process_directive_line(
         &self, segs: &mut ProgramSegments, labels: &mut ProgramLabels, line: &mut ProgramLine,
     ) -> Result<bool, Error> {
@@ -471,7 +470,7 @@ impl Assembler {
                 // all evaluate to either byte or word depending on operation
                 // todo: does anything weird happen if ValueNode contains location reference?
                 let mut nodes = Vec::new();
-                for val in line.get_operand().split(",") {
+                for val in line.get_operand().split(',') {
                     let node = self.parser.str_to_value_node(val)?;
                     nodes.push(node);
                 }

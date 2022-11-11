@@ -1,6 +1,6 @@
 use super::*;
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 
 pub enum AccessType {
     Program,
@@ -32,8 +32,8 @@ impl Core {
             ));
         }
         let byte = self.mem[addr as usize];
-        if data.is_some() {
-            *data.unwrap() = byte;
+        if let Some(data) = data {
+            *data = byte;
         }
         Ok(byte)
     }
@@ -41,8 +41,8 @@ impl Core {
     pub fn _read_u8_as_u16(&self, atype: AccessType, addr: u16, data: Option<&mut u16>) -> Result<u16, Error> {
         let byte = self._read_u8(atype, addr, None)?;
         let word = byte as u16;
-        if data.is_some() {
-            *data.unwrap() = word
+        if let Some(data) = data {
+            *data = word
         }
         Ok(word)
     }
@@ -53,8 +53,8 @@ impl Core {
         self._read_u8(atype, addr, Some(&mut b[0]))?;
         self._read_u8(atype, addr + 1, Some(&mut b[1]))?;
         let word = (b[0] as u16) << 8 | (b[1] as u16);
-        if data.is_some() {
-            *data.unwrap() = word;
+        if let Some(data) = data {
+            *data = word;
         }
         Ok(word)
     }

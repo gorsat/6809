@@ -79,8 +79,8 @@ impl CCBit {
 
 impl CCBits {
     pub fn reset(&mut self) { self.reg = 0; }
-    pub fn from_byte(&mut self, byte: u8) { self.reg = byte; }
-    pub fn to_byte(&self) -> u8 { self.reg }
+    pub fn set_from_byte(&mut self, byte: u8) { self.reg = byte; }
+    pub fn get_as_byte(&self) -> u8 { self.reg }
     pub fn set(&mut self, bit: CCBit, val: bool) {
         let mask: u8 = 1u8 << bit as usize;
         if val {
@@ -89,7 +89,7 @@ impl CCBits {
             self.reg &= !mask;
         }
     }
-    pub fn is_set(&self, bit: CCBit) -> bool { &CC_TABLE[bit as usize].mask & self.reg != 0 }
+    pub fn is_set(&self, bit: CCBit) -> bool { CC_TABLE[bit as usize].mask & self.reg != 0 }
     pub fn get_set_bits(&self) -> Vec<CCBit> {
         let mut v: Vec<CCBit> = Vec::new();
         for t in &CC_TABLE {
@@ -101,7 +101,7 @@ impl CCBits {
     }
     // condition code struct doubles as ALU
     pub fn add_u8(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
-        let carry_in = if with_carry && self.is_set(CCBit::C) { 1 } else { 0 };
+        let carry_in = u8::from(with_carry && self.is_set(CCBit::C));
         let (a1, c1) = a.overflowing_add(carry_in);
         let (result, c2) = a1.overflowing_add(b);
         self.set(CCBit::C, c1 || c2);
@@ -132,7 +132,7 @@ impl CCBits {
         result
     }
     pub fn sub_u8(&mut self, a: u8, b: u8, with_carry: bool) -> u8 {
-        let borrow = if with_carry && self.is_set(CCBit::C) { 1 } else { 0 };
+        let borrow = u8::from(with_carry && self.is_set(CCBit::C));
         let (a1, c1) = a.overflowing_sub(borrow);
         let (result, c2) = a1.overflowing_sub(b);
         self.set(CCBit::C, c1 || c2);
@@ -301,7 +301,7 @@ impl fmt::Display for CCBits {
 }
 
 /// Enumeration of all registers and a placeholder, invalid register called 'Z'. 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Name {
     A,
     B,
@@ -315,7 +315,7 @@ pub enum Name {
     CC,
     Z, // Error case; non-existent register
 }
-const REG_NAMES: &'static [&str] = &["A", "B", "D", "X", "Y", "U", "S", "PC", "DP", "CC", "Z"];
+const REG_NAMES: &[&str] = &["A", "B", "D", "X", "Y", "U", "S", "PC", "DP", "CC", "Z"];
 
 impl Name {
     pub fn to_str(self) -> &'static str { REG_NAMES[self as usize] }
@@ -390,7 +390,7 @@ impl Set {
             Name::S => self.s = val.u16(),
             Name::PC => self.pc = val.u16(),
             Name::DP => self.dp = val.u8(),
-            Name::CC => self.cc.from_byte(val.u8()),
+            Name::CC => self.cc.set_from_byte(val.u8()),
             Name::Z => panic!("invalid register"),
         }
     }
@@ -405,7 +405,7 @@ impl Set {
             Name::S => u8u16::u16(self.s),
             Name::PC => u8u16::u16(self.pc),
             Name::DP => u8u16::u8(self.dp),
-            Name::CC => u8u16::u8(self.cc.to_byte()),
+            Name::CC => u8u16::u8(self.cc.get_as_byte()),
             Name::Z => panic!("invalid register"),
         }
     }
@@ -416,7 +416,7 @@ impl Set {
     }
 }
 impl fmt::Debug for Set {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { <Set as fmt::Display>::fmt(&self, f) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { <Set as fmt::Display>::fmt(self, f) }
 }
 impl fmt::Display for Set {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -1,5 +1,5 @@
 //! # A 6809 Assembler, Simulator and Debugger written in Rust.
-//! 
+//!
 //! ## Getting Started
 //! To assemble and run a program:
 //! ```
@@ -57,7 +57,7 @@ fn process_file(filename: &str) -> Result<(), Error> {
     let mut program: Option<Program> = None;
     let mut hex: Option<HexRecordCollection> = None;
     let path = Path::new(filename);
-    let ext = path.extension().map(OsStr::to_str).flatten().or(Some("")).unwrap();
+    let ext = path.extension().and_then(OsStr::to_str).unwrap_or("");
     match ext.to_ascii_lowercase().as_str() {
         "asm" | "s" => {
             // the file looks like assembly source code, so try to assemble it
@@ -112,7 +112,7 @@ mod tests {
     use std::fs;
     #[test]
     pub fn rudimentary() -> Result<(), Error> {
-        const PROGRAM01: &'static [u8] = &[0x96, 0x40, 0x9b, 0x41, 0x97, 0x42, 0x3f];
+        const PROGRAM01: &[u8] = &[0x96, 0x40, 0x9b, 0x41, 0x97, 0x42, 0x3f];
         let mut core = Core::new(0xefff, None);
         info!("Starting MC6809E CPU rudimentary test...");
         core.reg.a = 0xaa;
@@ -133,7 +133,7 @@ mod tests {
         assert!(core.reg.cc.reg == 0);
 
         // load program
-        core.load_bytes(&PROGRAM01, 0u16)?;
+        core.load_bytes(PROGRAM01, 0u16)?;
         // set parameters in ram
         core.mem[0x40] = 0x38;
         core.mem[0x41] = 0x2b;
@@ -149,7 +149,7 @@ mod tests {
                 step,
                 temp_pc,
                 outcome.inst.flavor.desc.name,
-                outcome.inst.operand.unwrap_or(String::from("")),
+                outcome.inst.operand.unwrap_or_default(),
                 core.reg,
                 core.reg.cc
             );
@@ -174,7 +174,7 @@ mod tests {
     fn various_programs() -> Result<(), Error> {
         // try to load and run each .asm file in the ./test directory
         // all of them should run successfully and pass all associated test criteria
-        const TEST_PATH: &'static str = "test";
+        const TEST_PATH: &str = "test";
         println!("Attempting to run all .asm files in {}", TEST_PATH);
         let mut entries = fs::read_dir(TEST_PATH)?
             .map(|res| res.map(|e| e.path()))
@@ -188,9 +188,7 @@ mod tests {
                 if !ext.eq_ignore_ascii_case("asm") {
                     continue;
                 }
-                if let Err(e) = process_file(e.to_str().unwrap()) {
-                    return Err(e);
-                }
+                process_file(e.to_str().unwrap())?
             }
         }
         Ok(())
@@ -199,7 +197,7 @@ mod tests {
     fn runtime_errors() -> Result<(), Error> {
         // try to load and run each .asm file in the ./test/errors directory
         // every one of them should cleanly return an ErrorKind::Runtime error
-        const TEST_PATH: &'static str = "test/errors";
+        const TEST_PATH: &str = "test/errors";
         println!("Attempting to run all .asm files in {}", TEST_PATH);
         let mut entries = fs::read_dir(TEST_PATH)?
             .map(|res| res.map(|e| e.path()))

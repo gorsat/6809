@@ -3,22 +3,23 @@
 //! The hex file format seems to be a popular way to move microprocessor machine code around
 //! so I've added this quick and dirty implementation for reading and writing these files.
 //!   
-//! This implementation is based on the specification of I8HEX described in 
+//! This implementation is based on the specification of I8HEX described in
 //! [this wikipedia article](https://en.wikipedia.org/wiki/Intel_HEX).
 
 use regex::Regex;
+use std::fmt::{self, Display};
 use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader};
 
 pub mod HexRecordType {
     // This is an implementation of I8HEX so only the Data and EndOffile record types are supported
-    pub const Data: u8 = 00;
-    pub const EndOfFile: u8 = 01;
-    pub const ExSegAddr: u8 = 02;
-    pub const StartSegAddr: u8 = 03;
-    pub const ExLinAddr: u8 = 04;
-    pub const StartLinAddr: u8 = 05;
+    pub const Data: u8 = 0;
+    pub const EndOfFile: u8 = 1;
+    pub const ExSegAddr: u8 = 2;
+    pub const StartSegAddr: u8 = 3;
+    pub const ExLinAddr: u8 = 4;
+    pub const StartLinAddr: u8 = 5;
 }
 pub struct HexRecord {
     pub data_size: u8,
@@ -26,6 +27,20 @@ pub struct HexRecord {
     pub record_type: u8,
     pub data: Option<Vec<u8>>,
     pub checksum: u8,
+}
+impl Display for HexRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let data = if let Some(data) = &self.data {
+            data.iter().map(|&b| format!("{:02x}", b)).collect::<String>()
+        } else {
+            "".to_string()
+        };
+        writeln!(
+            f,
+            ":{:02x}{:04x}{:02x}{data}{:02x}",
+            self.data_size, self.address, self.record_type, self.checksum
+        )
+    }
 }
 use super::Error;
 impl HexRecord {
@@ -48,17 +63,6 @@ impl HexRecord {
         } else {
             Ok(None)
         }
-    }
-    pub fn to_string(&self) -> String {
-        let data = if let Some(data) = &self.data {
-            data.iter().map(|&b| format!("{:02x}", b)).collect::<String>()
-        } else {
-            "".to_string()
-        };
-        format!(
-            ":{:02x}{:04x}{:02x}{data}{:02x}\n",
-            self.data_size, self.address, self.record_type, self.checksum
-        )
     }
     pub fn from_captures(c: &regex::Captures) -> Option<Self> {
         let data_size = u8::from_str_radix(c.get(1)?.as_str(), 16).ok()?;
@@ -162,7 +166,7 @@ impl HexRecordCollection {
             return Err(general_err!("cannot write hex file without EOF record"));
         }
         for r in self.iter() {
-            f.write(r.to_string().as_bytes())?;
+            f.write_all(r.to_string().as_bytes())?;
         }
         Ok(())
     }
