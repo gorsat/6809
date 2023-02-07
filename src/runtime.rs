@@ -400,7 +400,8 @@ impl Core {
                         // ,PC + 8 bit offset
                         let offset = self._read_u8(AccessType::Program, live_ctx.pc + inst.size, None)? as i8;
                         inst.size += 1;
-                        let (addr, _) = u16::overflowing_add(live_ctx.pc, offset as u16);
+                        // Note: effective address is relative to the program counter's NEW value (the address of the next instruction)
+                        let (addr, _) = u16::overflowing_add(live_ctx.pc + inst.size, offset as u16);
                         inst.ea = addr;
                         if config::help_humans() {
                             inst.operand = Some(format!("{},PC", offset));
