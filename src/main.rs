@@ -117,11 +117,11 @@ mod tests {
         info!("Starting MC6809E CPU rudimentary test...");
         core.reg.a = 0xaa;
         core.reg.b = 0xbb;
-        core.mem[core.reg.pc as usize] = 0x12;
+        core.ram.write().unwrap()[core.reg.pc as usize] = 0x12;
         core.reg.s = core.reg.s.wrapping_sub(1u16);
-        assert!(core.reg.s as usize == core.mem.len() - 1);
-        core.mem[core.reg.s as usize] = 0xff;
-        core.mem[core.reg.s as usize] = 0;
+        assert!(core.reg.s as usize == core.ram.write().unwrap().len() - 1);
+        core.ram.write().unwrap()[core.reg.s as usize] = 0xff;
+        core.ram.write().unwrap()[core.reg.s as usize] = 0;
 
         core.reg.cc.set(registers::CCBit::C, true);
         core.reg.cc.set(registers::CCBit::H, true);
@@ -130,13 +130,14 @@ mod tests {
         println!("{} -> ({})", core.reg, core.reg.cc);
 
         core.reset()?;
-        assert!(core.reg.cc.reg == 0);
+        // after reset CC bits I and F should be set; all other bits should be 0
+        assert!(core.reg.cc.reg == 0x50);
 
         // load program
         core.load_bytes(PROGRAM01, 0u16)?;
         // set parameters in ram
-        core.mem[0x40] = 0x38;
-        core.mem[0x41] = 0x2b;
+        core.ram.write().unwrap()[0x40] = 0x38;
+        core.ram.write().unwrap()[0x41] = 0x2b;
 
         info!("Running simple test program...");
         let mut step = 0;
@@ -166,7 +167,7 @@ mod tests {
         }
         core.dump_mem(0x40, 3);
         // check outcome
-        assert!(core.mem[0x42] == 0x63);
+        assert!(core.ram.write().unwrap()[0x42] == 0x63);
         info!("Rudimentary test complete.");
         Ok(())
     }

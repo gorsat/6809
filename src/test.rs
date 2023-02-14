@@ -87,7 +87,7 @@ impl TestCriterion {
         let lhs_val = match lhs {
             RegOrAddr::Reg(reg) => {
                 lhs_size = registers::reg_size(*reg);
-                core.reg.reg_to_val(*reg)
+                core.reg.get_register(*reg)
             }
             RegOrAddr::Addr(addr) => {
                 if let AddrOrVal::Val(val) = rhs {

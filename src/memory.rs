@@ -10,28 +10,22 @@ pub enum AccessType {
     System,
 }
 
+// todo: Consider moving memory access to a distinct memory controller object.
 impl Core {
     // reads one byte from RAM
-    pub fn _read_u8(&self, atype: AccessType, addr: u16, data: Option<&mut u8>) -> Result<u8, Error> {
+    pub fn _read_u8(&self, _: AccessType, addr: u16, data: Option<&mut u8>) -> Result<u8, Error> {
+        // first check to see if this address is overridden by the ACIA
         if let Some(acia) = self.acia.as_ref() {
             if acia.owns_address(addr) {
                 return acia.read(addr);
             }
         }
-        if addr as usize >= self.mem.len() {
-            return Err(Error::new(
-                ErrorKind::Memory,
-                None,
-                format!(
-                    "Out of bounds read. AccessType={:?}, Address={:04x}, RAM={:04x} bytes",
-                    atype,
-                    addr,
-                    self.mem.len() as u16
-                )
-                .as_str(),
-            ));
+        // if the debugger is enabled then check to see if this read should trigger a breakpoint
+        if config::debug() {
+            self.debug_check_for_watch_hit(addr);
         }
-        let byte = self.mem[addr as usize];
+        let ram = self.ram.read().unwrap();
+        let byte = ram[addr as usize];
         if let Some(data) = data {
             *data = byte;
         }
@@ -75,6 +69,25 @@ impl Core {
     //
     // writes
     //
+    pub fn _write_u8(&mut self, at: AccessType, addr: u16, data: u8) -> Result<(), Error> {
+        // first check to see if this address is overridden by the ACIA
+        if let Some(acia) = self.acia.as_mut() {
+            if acia.owns_address(addr) {
+                return acia.write(addr, data);
+            }
+        }
+        // if the debugger is enabled then check to see if this write should trigger a breakpoint
+        if config::debug() {
+            self.debug_check_for_watch_hit(addr);
+        }
+        if addr > self.ram_top && at != AccessType::System {
+            return Ok(());
+        }
+        // the address is within the address space of RAM
+        let mut ram = self.ram.write().unwrap();
+        ram[addr as usize] = data;
+        Ok(())
+    }
     pub fn _write_u8u16(&mut self, atype: AccessType, addr: u16, data: u8u16) -> Result<(), Error> {
         let mut offset = 0u16;
         if let Some(msb) = data.msb() {
@@ -82,40 +95,5 @@ impl Core {
             offset += 1;
         }
         self._write_u8(atype, addr + offset, data.lsb())
-    }
-    pub fn _write_u8(&mut self, atype: AccessType, addr: u16, data: u8) -> Result<(), Error> {
-        if let Some(acia) = self.acia.as_mut() {
-            if acia.owns_address(addr) {
-                return acia.write(addr, data);
-            }
-        }
-
-        if addr > self.ram_top && atype != AccessType::System {
-            warn!(
-                "attempted write to read-only address: {:4x} (PC={:4x})",
-                addr, self.reg.pc
-            );
-            return Ok(());
-        }
-
-        if addr as usize >= self.mem.len() {
-            return Err(Error::new(
-                ErrorKind::Memory,
-                None,
-                format!(
-                    "Out of bounds write. AccessType={:?}, Address={:04x}, RAM={:04x} bytes",
-                    atype,
-                    addr,
-                    self.mem.len() as u16
-                )
-                .as_str(),
-            ));
-        }
-        if config::debug() {
-            // if the debugger is enabled then check to see if this write should trigger a breakpoint
-            self.debug_check_for_watch_hit(addr);
-        }
-        self.mem[addr as usize] = data;
-        Ok(())
     }
 }

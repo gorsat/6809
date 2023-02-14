@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 /// MC6809E register set helpers
-
 use super::*;
 
 /// Enumeration of the condition code register bits
@@ -16,15 +15,15 @@ pub enum CCBit {
     E = 7,
 }
 
-/// Representation of the condition code register. 
-/// The implementation of this struct is effectively the ALU, i.e., 
+/// Representation of the condition code register.
+/// The implementation of this struct is effectively the ALU, i.e.,
 /// the fundamental math operations are implemented here.
 #[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct CCBits {
     pub reg: u8,
 }
 
-/// Helper struct to map metadata about condition code register bits. 
+/// Helper struct to map metadata about condition code register bits.
 pub struct CCInfo {
     bit: CCBit,
     mask: u8,
@@ -78,8 +77,11 @@ impl CCBit {
 }
 
 impl CCBits {
-    pub fn reset(&mut self) { self.reg = 0; }
+    pub fn reset(&mut self) {
+        self.reg = 0x50; /* disable IRQ and FIRQ on reset */
+    }
     pub fn set_from_byte(&mut self, byte: u8) { self.reg = byte; }
+    pub fn or_with_byte(&mut self, byte: u8 ) { self.reg |= byte; }
     pub fn get_as_byte(&self) -> u8 { self.reg }
     pub fn set(&mut self, bit: CCBit, val: bool) {
         let mask: u8 = 1u8 << bit as usize;
@@ -300,7 +302,7 @@ impl fmt::Display for CCBits {
     }
 }
 
-/// Enumeration of all registers and a placeholder, invalid register called 'Z'. 
+/// Enumeration of all registers and a placeholder, invalid register called 'Z'.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Name {
     A,
@@ -370,7 +372,7 @@ impl Set {
         self.dp = 0;
         self.cc.reset();
     }
-    pub fn reg_from_val(&mut self, reg: Name, val: u8u16) {
+    pub fn set_register(&mut self, reg: Name, val: u8u16) {
         match reg {
             Name::A => {
                 self.a = val.u8();
@@ -394,7 +396,7 @@ impl Set {
             Name::Z => panic!("invalid register"),
         }
     }
-    pub fn reg_to_val(&self, reg: Name) -> u8u16 {
+    pub fn get_register(&self, reg: Name) -> u8u16 {
         match reg {
             Name::A => u8u16::u8(self.a),
             Name::B => u8u16::u8(self.b),

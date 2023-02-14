@@ -30,6 +30,7 @@ help!(
 );
 help!(cmd_dm, "dm [<loc>] [<num>] - Dump Memory; show <num> bytes at <loc>");
 help!(cmd_ds, "ds [<num>] - Dump Stack; show <num> bytes of system stack");
+help!(cmd_f, "f <value> <start_loc> [end_loc] - find next occurance of value");
 help!(cmd_l, "l [<loc>] [<num>] - List <num> instructions at <loc>");
 help!(cmd_wd, "wd - Working Directory; display the current working directory");
 help!(cmd_q, "q - Quit; terminate this application");
@@ -145,11 +146,12 @@ pub enum StepMode {
 }
 impl Core {
     pub fn debug_cli(&mut self) -> Result<(), Error> {
+        self.in_debugger = true;
         let save_pc = self.reg.pc;
         // clear step mode
         self.step_mode = StepMode::Off;
         // clear watch hits
-        self.watch_hits.clear();
+        self.watch_hits.get_mut().clear();
         // clear list mode
         if let Some(lm) = &self.list_mode {
             self.reg = lm.saved_ctx;
@@ -214,6 +216,53 @@ impl Core {
                     }
                     println!("Dumping {} bytes from System stack ({:04X})", count, addr);
                     self.dump_mem(addr, count);
+                }
+                "f" => {
+                    // find: f <value> <start_loc> [end_loc]
+                    if cmd.len() < 3 {
+                        println!("Bad syntax.");
+                        show_help!(cmd_f);
+                        continue;
+                    }
+                    if let Some(value) = self.parse_number(cmd[1]) {
+                        if let Some(start) = self.parse_address(cmd[2]) {
+                            let end = if cmd.len() > 3 {
+                                if let Some(end) = self.parse_address(cmd[3]) {
+                                    end
+                                } else {
+                                    println!("Invalid end address.");
+                                    continue;
+                                }
+                            } else {
+                                0xfeff
+                            };
+                            let mut found_at = None;
+                            let mut pat = [0u8; 2];
+                            'search: for addr in start..=(end - value.size() + 1) {
+                                value.get_as_bytes(&mut pat);
+                                for i in 0..value.size() {
+                                    let b = self._read_u8(memory::AccessType::System, addr + i, None).unwrap();
+                                    if b != pat[i as usize] {
+                                        continue 'search;
+                                    }
+                                }
+                                // found it!
+                                found_at = Some(addr);
+                                break;
+                            }
+                            if let Some(addr) = found_at {
+                                println!("{} found at {:04x}", value, addr);
+                            } else {
+                                println!("{} not found", value);
+                            }
+                        } else {
+                            println!("Invalid start address.");
+                            continue;
+                        }
+                    } else {
+                        println!("Invalid search value: \"{}\"", cmd[1]);
+                        continue;
+                    }
                 }
                 "l" | "list" => {
                     // list (disassemble)
@@ -443,6 +492,7 @@ impl Core {
             self.clear_history();
         }
         term::flush_keyboard_input();
+        self.in_debugger = false;
         Ok(())
     }
     pub fn load_symbols(&mut self, filename: &str) -> Result<usize, Error> {
@@ -507,11 +557,11 @@ impl Core {
         }
         None
     }
-    pub fn debug_check_for_watch_hit(&mut self, addr: u16) {
+    pub fn debug_check_for_watch_hit(&self, addr: u16) {
         for bp in &self.breakpoints {
             if addr == bp.addr && bp.active && bp.watch {
                 println!("Hit at {:04X}", addr);
-                self.watch_hits.push(addr);
+                self.watch_hits.borrow_mut().push(addr);
                 return;
             }
         }
@@ -623,9 +673,10 @@ impl Core {
         }
         let hit_breakpoint = || -> bool {
             let mut breakpoint = false;
+            let watch_hits = self.watch_hits.borrow();
             // if we hit a watch then break into the debugger
-            if !self.watch_hits.is_empty() {
-                for addr in &self.watch_hits {
+            if !watch_hits.is_empty() {
+                for addr in watch_hits.iter() {
                     if let Some(bp) = self.get_breakpoint_by_addr(*addr, true) {
                         println!("Paused at watch breakpoint: {}", bp);
                     }
@@ -731,7 +782,7 @@ impl Core {
                     row = count;
                     break;
                 }
-                let b = self.mem[index as usize];
+                let b = self._read_u8(memory::AccessType::System, index, None).unwrap();
                 if col < COLS_PER_ROW {
                     if i < count {
                         print!(" {:02X}", b);
