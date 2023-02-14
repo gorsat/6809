@@ -181,15 +181,18 @@ mod tests {
             .map(|res| res.map(|e| e.path()))
             .collect::<Result<Vec<_>, io::Error>>()?;
         entries.sort();
-        for e in entries {
-            if !e.is_file() {
+        for p in entries {
+            if !p.is_file() {
                 continue;
             }
-            if let Some(ext) = e.extension() {
+            if let Some(ext) = p.extension() {
                 if !ext.eq_ignore_ascii_case("asm") {
                     continue;
                 }
-                process_file(e.to_str().unwrap())?
+                if let Err(e) = process_file(p.to_str().unwrap()) {
+                    println!("Error processing file {}: {}", p.display(), e);
+                    return Err(e);
+                }
             }
         }
         Ok(())
