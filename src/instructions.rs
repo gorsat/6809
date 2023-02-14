@@ -1,4 +1,4 @@
-#![allow(non_snake_case)]
+#![allow(non_snake_case,unused)]
 
 use crate::core::InterruptType;
 
@@ -257,7 +257,6 @@ impl Meta {
             _ => None,
         }
     }
-    #[allow(unused)]
     pub fn to_interrupt_type(&self) -> Option<InterruptType> {
         match self {
             Meta::SWI => Some(InterruptType::Swi),
@@ -981,16 +980,18 @@ fn __asl(c: &Core, o: &mut Outcome) -> Result<(), Error> {
     }
     Ok(())
 }
-fn __asr(c: &Core, o: &mut Outcome) -> Result<(), Error> {
+fn __asr(c: &Core, o: &mut Outcome) -> Result<(), Error> { __shr(c, o, true) }
+fn __lsr(c: &Core, o: &mut Outcome) -> Result<(), Error> { __shr(c, o, false) }
+fn __shr(c: &Core, o: &mut Outcome, preserve_sign: bool) -> Result<(), Error> {
     let reg = o.inst.flavor.desc.reg;
     if reg == registers::Name::Z {
         let data = c._read_u8(AccessType::Generic, o.inst.ea, None)?;
-        let new_val = o.new_ctx.cc.shr_u8(data);
+        let new_val = o.new_ctx.cc.shr_u8(data, preserve_sign);
         o.write(o.inst.ea, AccessType::Generic, u8u16::u8(new_val));
     } else {
         assert!(reg == registers::Name::A || reg == registers::Name::B);
         let data = o.new_ctx.get_register(reg).u8();
-        let new_val = o.new_ctx.cc.shr_u8(data);
+        let new_val = o.new_ctx.cc.shr_u8(data, preserve_sign);
         o.new_ctx.set_register(reg, u8u16::u8(new_val));
     }
     Ok(())
@@ -1157,9 +1158,9 @@ pub const DESCRIPTORS: &[Descriptor] = &[
  Descriptor{name:"LEAU",	eval:__lea,	reg: Name::U, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x33,clk:4,sz:2,am:2},]},
  Descriptor{name:"LEAX",	eval:__lea,	reg: Name::X, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x30,clk:4,sz:2,am:2},]},
  Descriptor{name:"LEAY",	eval:__lea,	reg: Name::Y, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x31,clk:4,sz:2,am:2},]},
- Descriptor{name:"LSR",	    eval:__asr,	reg: Name::Z, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x04,clk:5,sz:2,am:1},M{op:0x64,clk:6,sz:2,am:2},M{op:0x74,clk:6,sz:3,am:3},]},
- Descriptor{name:"LSRA",	eval:__asr,	reg: Name::A, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x44,clk:1,sz:1,am:4},]},
- Descriptor{name:"LSRB",	eval:__asr,	reg: Name::B, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x54,clk:1,sz:1,am:4},]},
+ Descriptor{name:"LSR",	    eval:__lsr,	reg: Name::Z, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x04,clk:5,sz:2,am:1},M{op:0x64,clk:6,sz:2,am:2},M{op:0x74,clk:6,sz:3,am:3},]},
+ Descriptor{name:"LSRA",	eval:__lsr,	reg: Name::A, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x44,clk:1,sz:1,am:4},]},
+ Descriptor{name:"LSRB",	eval:__lsr,	reg: Name::B, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x54,clk:1,sz:1,am:4},]},
  Descriptor{name:"MUL",	    eval:__mul,	reg: Name::Z, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x3D,clk:10,sz:1,am:4},]},
  Descriptor{name:"NEG",	    eval:__neg,	reg: Name::Z, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x00,clk:5,sz:2,am:1},M{op:0x60,clk:6,sz:2,am:2},M{op:0x70,clk:6,sz:3,am:3},]},
  Descriptor{name:"NEGA",	eval:__neg,	reg: Name::A, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x40,clk:1,sz:1,am:4},]},

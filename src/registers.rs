@@ -219,12 +219,15 @@ impl CCBits {
         self.set(CCBit::N, n);
         result
     }
-    pub fn shr_u8(&mut self, val: u8) -> u8 {
+    pub fn shr_u8(&mut self, val: u8, preserve_sign: bool) -> u8 {
         let c = val & 1 == 1;
-        let result = val >> 1;
+        let mut result = val >> 1;
+        if preserve_sign {
+            result |= val & 0x80;
+        }
         self.set(CCBit::C, c);
         self.set(CCBit::Z, result == 0);
-        self.set(CCBit::N, false);
+        self.set(CCBit::N, sign_bit_8!(result));
         result
     }
     pub fn rol_u8(&mut self, val: u8) -> u8 {
