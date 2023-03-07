@@ -154,22 +154,38 @@ impl ValueNode {
         // TODO: warn about overflow in these operations
         match self.token.ttype {
             TokenType::Add => {
-                let (u, _) = lhs.overflowing_add(rhs);
-                Ok(u)
+                let (u, f) = lhs.u16().overflowing_add(rhs.u16());
+                if f {
+                    Err(syntax_err!("addition overflow"))
+                } else {
+                    Ok(u8u16::from_u16_shrink(u))
+                }
             }
             TokenType::Sub => {
-                let (u, _) = lhs.overflowing_sub(rhs);
-                Ok(u)
+                let (u, f) = lhs.u16().overflowing_sub(rhs.u16());
+                if f {
+                    Err(syntax_err!("subtraction overflow"))
+                } else {
+                    Ok(u8u16::from_u16_shrink(u))
+                }
             }
             TokenType::Star => {
-                let (u, _) = lhs.overflowing_mul(rhs);
-                Ok(u)
+                let (u, f) = lhs.u16().overflowing_mul(rhs.u16());
+                if f {
+                    Err(syntax_err!("multiplication overflow"))
+                } else {
+                    Ok(u8u16::from_u16_shrink(u))
+                }
             }
             TokenType::Div => Ok(lhs.div(rhs)),
             TokenType::Mod => Ok(lhs.modulo(rhs)),
             TokenType::Pow => {
-                let (u, _) = lhs.overflowing_pow(rhs);
-                Ok(u)
+                let (u, f) = lhs.u16().overflowing_pow(rhs.u16() as u32);
+                if f {
+                    Err(syntax_err!("exponential overflow"))
+                } else {
+                    Ok(u8u16::from_u16_shrink(u))
+                }
             }
             _ => unreachable!(),
         }
@@ -380,7 +396,7 @@ impl Parser {
     /// ```text
     ///     opexpr ::= valexpr | valexpr, reg | reg [,reg]+ | ,incdec  
     /// ```
-    /// 
+    ///
     /// AddressingMode:  Extended |    Offset    | Register |  IncDec
     fn parse_opexpr(&self, token_iter: &mut TokenIter, od: &mut OperandDescriptor) -> Result<(), Error> {
         // look for: valexpr | valexpr, reg
@@ -526,7 +542,7 @@ impl Parser {
     ///      valexpr ::= powexpr [addop|mulop powexpr]
     /// ```
     /// So it's not *strictly* left-to-right because parantheses are still honored
-    /// and exponents are still evaluated before other operators, but it's close 
+    /// and exponents are still evaluated before other operators, but it's close
     /// enough to support the old code bases I've found thus far.
     fn parse_valexpr_lr(&self, token_iter: &mut TokenIter) -> Result<ValueNode, Error> {
         let mut node = self.parse_mulexpr(token_iter)?;
@@ -620,8 +636,8 @@ impl Parser {
         // return a Pow node
         Ok(ValueNode::new(pow_token, false, Some(left), Some(right)))
     }
-    /// Parse an atom. 
-    /// ```text 
+    /// Parse an atom.
+    /// ```text
     ///     atom ::= label | number | '*' | '(' valexpr ')'
     /// ```
     fn parse_atom(&self, token_iter: &mut TokenIter) -> Result<ValueNode, Error> {
@@ -917,7 +933,7 @@ impl Parser {
             if digit.is_none() {
                 break;
             }
-            num = (num * 10) + digit.unwrap() as u32;
+            num = (num * 10) + digit.unwrap();
             raw.push(*c);
             if num > 0xffff {
                 return Err("decimal constant too large".to_string());

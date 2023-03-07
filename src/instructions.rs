@@ -1,4 +1,4 @@
-#![allow(non_snake_case,unused)]
+#![allow(non_snake_case)]
 
 use crate::core::InterruptType;
 
@@ -86,6 +86,7 @@ impl From<usize> for AddressingMode {
 
 /// Post-Byte Type - the type of post-byte required for a given instruction.
 #[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum PBT {
     NA = 0,
     TransferExchange = 1,
@@ -241,6 +242,7 @@ pub mod PPPostByte {
 #[derive(PartialEq, Eq, Debug)]
 pub enum Meta {
     CWAI,
+    EXIT,
     SWI,
     SWI2,
     SWI3,
@@ -250,6 +252,7 @@ impl Meta {
     pub fn from_opcode(i: u16) -> Option<Self> {
         match i {
             0x3c => Some(Meta::CWAI),
+            0x1111 => Some(Meta::EXIT),
             0x3f => Some(Meta::SWI),
             0x103f => Some(Meta::SWI2),
             0x113f => Some(Meta::SWI3),
@@ -257,6 +260,7 @@ impl Meta {
             _ => None,
         }
     }
+    #[allow(dead_code)]
     pub fn to_interrupt_type(&self) -> Option<InterruptType> {
         match self {
             Meta::SWI => Some(InterruptType::Swi),
@@ -572,11 +576,10 @@ fn __pul(c: &Core, o: &mut Outcome) -> Result<(), Error> {
 }
 
 fn __rti(c: &Core, o: &mut Outcome) -> Result<(), Error> {
-    let entire = o.new_ctx.cc.is_set(registers::CCBit::E);
-    // if E flag was set in CC then restore all registers
-    // otherwise, only restore CC and PC (and the E flag was reset by restoring CC)
     __pul_one(c, o, registers::Name::S, registers::Name::CC)?;
-    if entire {
+    // if E flag was set in the saved CC then restore all registers
+    // otherwise, only restore CC and PC (and the E flag was reset by restoring CC)
+    if o.new_ctx.cc.is_set(registers::CCBit::E) {
         __pul_one(c, o, registers::Name::S, registers::Name::A)?;
         __pul_one(c, o, registers::Name::S, registers::Name::B)?;
         __pul_one(c, o, registers::Name::S, registers::Name::DP)?;
@@ -1123,6 +1126,7 @@ pub const DESCRIPTORS: &[Descriptor] = &[
  Descriptor{name:"EORA",	eval:__xor,	reg: Name::A, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x88,clk:2,sz:2,am:0},M{op:0x98,clk:3,sz:2,am:1},M{op:0xA8,clk:4,sz:2,am:2},M{op:0xB8,clk:4,sz:3,am:3},]},
  Descriptor{name:"EORB",	eval:__xor,	reg: Name::B, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0xC8,clk:2,sz:2,am:0},M{op:0xD8,clk:3,sz:2,am:1},M{op:0xE8,clk:4,sz:2,am:2},M{op:0xF8,clk:4,sz:3,am:3},]},
  Descriptor{name:"EXG",	    eval:__exg,	reg: Name::Z, pbt: PBT::TransferExchange,  ot:OT::Exch,md:&[M{op:0x1E,clk:5,sz:2,am:0},]},
+ Descriptor{name:"EXIT",	eval:__meta,reg: Name::Z, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x1111,clk:99,sz:2,am:4},]},
  Descriptor{name:"INC",	    eval:__inc,	reg: Name::Z, pbt: PBT::NA,  ot:OT::Mode,md:&[M{op:0x0C,clk:5,sz:2,am:1},M{op:0x6C,clk:6,sz:2,am:2},M{op:0x7C,clk:6,sz:3,am:3},]},
  Descriptor{name:"INCA",	eval:__inc,	reg: Name::A, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x4C,clk:1,sz:1,am:4},]},
  Descriptor{name:"INCB",	eval:__inc,	reg: Name::B, pbt: PBT::NA,  ot:OT::None,md:&[M{op:0x5C,clk:1,sz:1,am:4},]},

@@ -163,7 +163,7 @@ impl ProgramLabels {
         if self.map.is_empty() {
             println!("No symbols.")
         } else {
-            let mut labels: Vec<_> = self.map.iter().map(|(_, v)| v).collect();
+            let mut labels: Vec<_> = self.map.values().collect();
             labels.sort_by(|&l1, &l2| l1.line.cmp(&l2.line));
             println!("{} symbols defined/referenced:", self.map.len());
             println!(blue!("{:4} {:4} {:10} {:4}"), "LINE", "ADDR", "LABEL", "VAL");

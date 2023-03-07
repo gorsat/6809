@@ -473,7 +473,7 @@ impl ObjectProducer for Instruction {
                     }
                     data.push(u8u16::u8(diff as u8));
                 } else {
-                    data.push(u8u16::u16(diff as u16));
+                    data.push(u8u16::u16(diff));
                 }
             }
             AddressingMode::Direct | AddressingMode::Extended => {
