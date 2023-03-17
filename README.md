@@ -12,6 +12,10 @@ But it will build and run some substantial assembly language programs (like Micr
 and run them much faster than they ever ran on the real processor.
 It might be useful for someone doing some retro work and it's definitely entertaining for those who want to relive the magic of early 1980s computing.
 
+> Note: If you're looking for a TRS-80 Color Computer emulator then check out [gorsat/coco](https://github.com/gorsat/coco). 
+> Using the coco emulator, you can load the EDTASM+ cartridge and directly edit/build/run 6809 assembler in the old coco console.
+> It's arguably not as developer friendly as this 6809 simulator, but it's lots of fun :grin:
+
 ## Getting Started
 This program runs on Mac, Windows and Linux (only tested on Ubuntu). To sanity check it, you can run a quick test: 
 ```
@@ -321,7 +325,7 @@ Here are just a few resources that may be useful in conjunction with this projec
 It would be fun to build and run more substantial programs (e.g., OS9). On the build side, this would require the addition of linking as well as a good way to integrate with make.
 The runtime would require support for more device emulation.
 
-Another fun project would be creating a full emulation of the TRS-80 Color Computer that could run old ROMs. I'd love to play some of those games I had as a kid. I imagine this would be quite a bit of work but is probably pretty straightforward using bevy.
+~~Another fun project would be creating a full emulation of the TRS-80 Color Computer that could run old ROMs. I'd love to play some of those games I had as a kid. I imagine this would be quite a bit of work but is probably pretty straightforward using bevy.~~ [This one is done!](https://github.com/gorsat/coco)
 
 The obsessive engineer in me would love to generalize this thing, but it is currently written with knowledge of the 6809 throughout the codebase. 
 It would be interesting to try to add support for another processor -- like the 6502 -- just to see how difficult that would be. If that worked out okay then I'd try adding support for others.  
