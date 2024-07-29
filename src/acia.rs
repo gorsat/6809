@@ -13,7 +13,7 @@ const TDRE: u8 = 0b00000010; // transmit data register empty
 
 pub struct Acia {
     pub addr: u16,
-    pub handle: Option<thread::JoinHandle<Result<(), Error>>>,
+    pub _handle: Option<thread::JoinHandle<Result<(), Error>>>,
     txout: Sender<u8>,
     rxin: Receiver<u8>,
     recv_cache: RefCell<Option<u8>>,
@@ -157,7 +157,7 @@ impl Acia {
         }));
         Ok(Acia {
             addr,
-            handle,
+            _handle: handle,
             txout,
             rxin,
             recv_cache: RefCell::new(None),

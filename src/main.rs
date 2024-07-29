@@ -67,7 +67,7 @@ fn process_file(filename: &str) -> Result<(), Error> {
         }
         "hex" => {
             // the file looks like machine code in hex format; read it
-            hex = Some(HexRecordCollection::read_from_file(filename)?);
+            hex = Some(HexRecordCollection::read_from_file(path)?);
             info!("Successfully loaded hex file {}", filename);
         }
         _ => return Err(general_err!("unrecognized file type")),

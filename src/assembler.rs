@@ -67,7 +67,7 @@ impl Assembler {
                         operation: Option<String>,
                         operand: Option<String>| {
             let pl = ProgramLine {
-                prog_line_num: pls.len() + 1,
+                _prog_line_num: pls.len() + 1,
                 src_line_num,
                 src,
                 label,
@@ -161,10 +161,7 @@ impl Assembler {
                     None,
                 );
                 // collect any/all args for the macro
-                let args = if let Some(a) = operand
-                    .as_ref()
-                    .and_then(|s| self.re_macro_args.captures(s.as_str()))
-                {
+                let args = if let Some(a) = operand.as_ref().and_then(|s| self.re_macro_args.captures(s.as_str())) {
                     a.get(0)
                         .unwrap()
                         .as_str()
@@ -358,7 +355,7 @@ impl Assembler {
             if let Some(label) = line.label.as_ref() {
                 // update the label's address to match the line's address
                 let old_addr = program.labels.set_address(label, line.addr)?;
-                if old_addr!= line.addr {
+                if old_addr != line.addr {
                     // the label's address changed; note the change in our counter
                     changes += 1;
                 }

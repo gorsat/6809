@@ -40,13 +40,13 @@ pub struct Core {
     pub ram: Arc<RwLock<Vec<u8>>>,
     pub ram_top: u16,              // keep track of where the caller wants ram to end
     pub acia: Option<acia::Acia>,  // ACIA simulator
-    pub reset_vector: Option<u16>, // overrides the reset vector if set
+    pub _reset_vector: Option<u16>, // overrides the reset vector if set
     /* interrupt processing */
     pub cart_pending: bool,  // true if cart is loaded but hasn't been run yet
-    pub in_cwai: bool,       // if true, the processor is within a CWAI instruction
-    pub in_sync: bool,       // if true, the processor is within a SYNC instruction
-    pub hsync_prev: Instant, // the last time hsync occurred
-    pub vsync_prev: Instant, // the last time vsync occurred
+    pub _in_cwai: bool,       // if true, the processor is within a CWAI instruction
+    pub _in_sync: bool,       // if true, the processor is within a SYNC instruction
+    pub _hsync_prev: Instant, // the last time hsync occurred
+    pub _vsync_prev: Instant, // the last time vsync occurred
     /* perf measurement */
     pub start_time: Instant,    // the most recent time at which self.exec() started a program
     pub instruction_count: u64, // the number of instructions executed since the most recent program started
@@ -78,12 +78,12 @@ impl Core {
             // mem: vec![0u8; 0x10000].into_boxed_slice(),
             ram: Arc::new(RwLock::new(vec![0;0x10000])),
             acia: acia_addr.map(|a| acia::Acia::new(a).expect("failed to start ACIA")),
-            reset_vector: None,
+            _reset_vector: None,
             cart_pending: false,
-            in_cwai: false,
-            in_sync: false,
-            hsync_prev: Instant::now(),
-            vsync_prev: Instant::now(),
+            _in_cwai: false,
+            _in_sync: false,
+            _hsync_prev: Instant::now(),
+            _vsync_prev: Instant::now(),
             ram_top,
             start_time: Instant::now(),
             instruction_count: 0,
@@ -132,7 +132,7 @@ impl Core {
             }
             "hex" => {
                 // the file looks like machine code in hex format; read it
-                let hex = HexRecordCollection::read_from_file(filename)?;
+                let hex = HexRecordCollection::read_from_file(path)?;
                 info!("Successfully loaded hex file {}", filename);
                 self.load_hex(&hex, Some(filename))?;
             }

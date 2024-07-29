@@ -38,7 +38,7 @@ impl MacroLineSegment {
             n: if i > 0 { Some(n) } else { None },
         })
     }
-    pub fn hydrate(&self, args: &Vec<&str>) -> Result<String, Error> {
+    pub fn hydrate(&self, args: &[&str]) -> Result<String, Error> {
         match self.n {
             Some(n) => {
                 if n > args.len() {
@@ -54,7 +54,7 @@ impl MacroLineSegment {
 #[derive(Debug)]
 pub struct Macro {
     pub name: String,                  // name assigned to macro by programmer
-    pub src_line_num: usize,           // line in the source on which macro defn begins
+    pub _src_line_num: usize,          // line in the source on which macro defn begins
     pub arg_count: usize,              // number of args required by macro
     lines: Vec<Vec<MacroLineSegment>>, // the non-empty lines of the macro (excluding .macro and .endm lines)
 }
@@ -62,7 +62,7 @@ impl Macro {
     pub fn new(name: &str, line: usize) -> Self {
         Macro {
             name: name.to_string(),
-            src_line_num: line,
+            _src_line_num: line,
             arg_count: 0,
             lines: Vec::new(),
         }
@@ -103,7 +103,7 @@ impl Macro {
 
 #[derive(Debug)]
 pub struct ProgramLine {
-    pub prog_line_num: usize,      // line number in program
+    pub _prog_line_num: usize,     // line number in program
     pub src_line_num: usize,       // corresponding line number in source
     pub src: String,               // verbatim line from source
     pub label: Option<String>,     // label defined on this line
@@ -140,7 +140,7 @@ pub struct Label {
     pub line: usize,          // line number where the label is defined
     addr: u16,                // address (location) of this label
     node: Option<ValueNode>,  // if this label is defined by EQU then it has a ValueNode
-    pub refs: Vec<usize>,     // the lines that reference this label
+    pub _refs: Vec<usize>,    // the lines that reference this label
     val_cache: Option<u8u16>, // cache of last value received from node.eval()
 }
 impl fmt::Display for Label {
@@ -185,7 +185,7 @@ impl ProgramLabels {
             line,
             addr,
             node,
-            refs: Vec::new(),
+            _refs: Vec::new(),
             val_cache: None,
         };
         self.map.insert(label.name.clone(), label);
@@ -270,7 +270,7 @@ impl ProgramLabels {
     }
     // the provided range (left,right) is *inclusive*
     pub fn adjust_label_addresses(&mut self, (left, right): (u16, u16), delta: i16) {
-        for label in  self.map.values_mut() {
+        for label in self.map.values_mut() {
             // is its value in the given range?
             if label.addr >= left && label.addr <= right {
                 // adjust the value by the given delta
@@ -321,14 +321,14 @@ impl ProgramSegments {
 
 #[derive(Debug)]
 pub struct Program {
-    pub addr: u16,                      // current address
-    pub line_number: usize,             // current line number
-    pub lines: Vec<ProgramLine>,        // program lines
-    pub labels: ProgramLabels,          // all labels
-    pub macros: HashMap<String, Macro>, // all macros
-    pub results: Vec<TestCriterion>,    // expected results for test criteria
-    pub segs: ProgramSegments,          // program segments (defined by ORG directive)
-    pub dp_dirty: bool,                 // true if DP register has been written to
+    pub addr: u16,                       // current address
+    pub line_number: usize,              // current line number
+    pub lines: Vec<ProgramLine>,         // program lines
+    pub labels: ProgramLabels,           // all labels
+    pub _macros: HashMap<String, Macro>, // all macros
+    pub results: Vec<TestCriterion>,     // expected results for test criteria
+    pub segs: ProgramSegments,           // program segments (defined by ORG directive)
+    pub dp_dirty: bool,                  // true if DP register has been written to
 }
 impl LabelResolver for Program {
     fn resolve(&self, label: &str) -> Option<u8u16> { self.labels.get_value(label) }
@@ -351,7 +351,7 @@ impl Program {
             line_number: 0,
             lines,
             labels: ProgramLabels::new(),
-            macros,
+            _macros: macros,
             results: Vec::new(),
             segs: ProgramSegments::new(),
             dp_dirty: false,
@@ -378,8 +378,8 @@ impl Program {
         let path = Path::new(parent_filename);
         let basename = path
             .file_stem()
-            .and_then(|s|s.to_str())
-            .ok_or_else(||general_err!("bad filename"))?;
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| general_err!("bad filename"))?;
         let mut pb = path.to_path_buf();
         pb.set_file_name(basename);
         // write out the listing file
@@ -450,6 +450,6 @@ impl Program {
         file = File::create(&pb)?;
         hf.write_to_file(&mut file)?;
         println!("wrote hex (binary) file: {}", pb.display());
-         Ok(())
+        Ok(())
     }
 }
