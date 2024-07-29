@@ -237,7 +237,6 @@ pub struct OperandDescriptor {
     pub mode: AddressingMode,
     pub force_mode: bool,
     pub value: Option<ValueNode>,
-    pub label_refs: Option<Vec<String>>,
     pub regs: Option<Vec<String>>,
     pub incdec: Option<IncDecType>,
 }
@@ -248,7 +247,6 @@ impl OperandDescriptor {
             mode: AddressingMode::Inherent,
             force_mode: false,
             value: None,
-            label_refs: None,
             regs: None,
             incdec: None,
         }
@@ -276,7 +274,7 @@ impl Display for OperandDescriptor {
                 write!(f, "{}", value)?;
             }
             AddressingMode::IncDec => {
-                let reg = self.regs.as_ref().unwrap().get(0).unwrap();
+                let reg = self.regs.as_ref().unwrap().first().unwrap();
                 match self.incdec.as_ref().unwrap() {
                     IncDecType::Dec => write!(f, ", -{}", reg),
                     IncDecType::DecDec => write!(f, ", --{}", reg),
@@ -292,7 +290,7 @@ impl Display for OperandDescriptor {
                 }
             }
             AddressingMode::Offset => {
-                write!(f, "{}, {}", value, self.regs.as_ref().unwrap().get(0).unwrap())?;
+                write!(f, "{}, {}", value, self.regs.as_ref().unwrap().first().unwrap())?;
             }
             _ => {}
         }
@@ -309,7 +307,7 @@ pub struct Parser {
 impl Parser {
     pub fn new() -> Self {
         Parser {
-            re_registers: Regex::new(r"(?i)^(A|B|CC|DP|D|PC|S|U|X|Y)$").unwrap(),
+            re_registers: Regex::new(r"(?i)^(A|B|CC|DP|D|PC|PCR|S|U|X|Y)$").unwrap(),
         }
     }
     /// Parses an operand and returns an OperandDescriptor on success.
@@ -424,9 +422,10 @@ impl Parser {
             // this should be constant offset addressing which means we need a register
             // we can consume the next token because it's an error if it isn't a register
             if let Some(reg1) = token_iter.next().filter(|t| t.ttype == TokenType::Register) {
+                let reg = reg1.clean();
                 od.value = Some(value);
-                od.mode = AddressingMode::Offset;
-                od.regs = Some(vec![reg1.clean()]);
+                od.mode = if reg == "PCR" {AddressingMode::PCRelative} else {AddressingMode::Offset};
+                od.regs = Some(vec![reg]);
                 return Ok(());
             }
             return Err(Error::new(ErrorKind::Syntax, None, "register missing after offset"));

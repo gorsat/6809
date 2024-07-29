@@ -55,9 +55,6 @@ pub trait ObjectProducer: std::fmt::Debug + std::fmt::Display {
     // returns true if the object results in potential DP register change
     fn changes_dp(&self) -> bool { false }
 
-    // get a clone of the successfully built object (if there is one)
-    fn bob_clone(&self) -> Option<BinaryObject>;
-
     // get a ref to this producer's object (if there is one)
     fn bob_ref(&self) -> Option<&BinaryObject>;
 }
@@ -105,6 +102,7 @@ impl Instruction {
                 }
             }
             AddressingMode::Offset => AddressingMode::Indexed,
+            AddressingMode::PCRelative => AddressingMode::Indexed,
             AddressingMode::IncDec => AddressingMode::Indexed,
             AddressingMode::Extended => {
                 // Indirect extended addressing mode is really just another "indexed" addressing mode
@@ -161,7 +159,9 @@ impl Instruction {
             "could not identify instruction variant; invalid addressing mode?",
         ))
     }
-    pub fn _build_indexed(&self, val: u8u16, data: &mut Vec<u8u16>, indirect: bool) -> Result<(), Error> {
+    pub fn _build_indexed(
+        &self, addr: u16, mut val: u8u16, data: &mut Vec<u8u16>, indirect: bool,
+    ) -> Result<(), Error> {
         match self.od.mode {
             AddressingMode::Register => {
                 let regs = self.od.regs.as_ref().unwrap();
@@ -186,33 +186,57 @@ impl Instruction {
                 };
                 data.push(u8u16::u8(post_byte));
             }
-            AddressingMode::Offset => {
+            AddressingMode::Offset | AddressingMode::PCRelative => {
+                // val should hold the offset
+                // the post-byte varies depending on the register, the size of the offset
+                // and whether we're in indirect mode
                 let regs = self.od.regs.as_ref().unwrap();
                 assert!(regs.len() == 1);
-                let mut post_byte: u8;
-
-                // val should hold the offset
-                // the post-byte varies depending on the size of the offset
-                // and things change if we're in indirect mode
+                let mut post_byte = 0x80u8;
+                self._add_index_register_to_postbyte(&mut post_byte, regs[0].as_str())?;
                 if indirect {
-                    post_byte = match val.u16() {
-                        0 => 0b10010100,
-                        v if v < 0x100 => 0b10011000,
-                        _ => 0b10011001,
+                    post_byte |= 0x10;
+                }
+                let mut add_offset = true;
+                if post_byte & 0b1100 != 0 {
+                    // indexing based on PC
+                    if self.od.mode == AddressingMode::PCRelative {
+                        // PCR mode; determine the offset
+                        // try using an 8-bit offset first
+                        let pc = addr + self.flavor.detail.sz + 1;
+                        let (mut offset, _) = u16::overflowing_sub(val.u16(), pc);
+                        let hi = (offset >> 8) as u8;
+                        if hi == 0 || (hi == 0xff && (offset & 0x80 == 0x80)) {
+                            val = u8u16::u8(offset as u8);
+                        } else {
+                            // 8-bit offset wasn't big enough; use 16-bit offset instead
+                            (offset, _) = u16::overflowing_sub(val.u16(), pc + 1);
+                            val = u8u16::u16(offset);
+                        }
                     }
                 } else {
-                    post_byte = match val.u16() {
-                        0 => 0b10000100,
-                        v if v > 0 && v < 0b00010000 => v as u8,
-                        v if v < 0x100 => 0b10001000,
-                        _ => 0b10001001,
-                    };
+                    // not indexing based on PC
+                    if val.u16() == 0 {
+                        // offset is zero
+                        post_byte |= 0b100;
+                        add_offset = false;
+                    } else {
+                        // check to see if the offset fits in 5 bits
+                        let x = val.sign_extended().u16() & 0xfff0;
+                        if !indirect && x == 0xfff0 || x == 0 {
+                            // offset fits in 5-bits, mode is not indirect, not indexing based on PC
+                            post_byte |= val.u8() & 0b11111; // store offset in bottom 5 bits
+                            post_byte &= 0x7f;
+                            add_offset = false;
+                        }
+                    }
                 }
-                self._add_index_register_to_postbyte(&mut post_byte, regs[0].as_str())?;
+                if add_offset && !val.is_u8() {
+                    // offset requires 2 bytes
+                    post_byte |= 1;
+                }
                 data.push(u8u16::u8(post_byte));
-                // if bit 7 is 0 then we have a 5-bit offset encoded in the post-byte
-                // otherwise, we have to add the offset to our object here
-                if (val.u16() != 0) && (post_byte & 0b10000000 != 0) {
+                if add_offset {
                     data.push(val);
                 }
             }
@@ -258,6 +282,7 @@ impl Instruction {
             "Y" => 0b00100000,
             "U" => 0b01000000,
             "S" => 0b01100000,
+            "PC" | "PCR" => 0b00001100,
             _ => {
                 return Err(syntax_err!(format!("invalid index register \"{}\"", reg).as_str()));
             }
@@ -312,12 +337,6 @@ impl ObjectProducer for Instruction {
         } else {
             self.flavor.detail.sz
         })
-    }
-    fn bob_clone(&self) -> Option<BinaryObject> {
-        if !self.built {
-            return None;
-        }
-        Some(self.bob.clone())
     }
     fn bob_ref(&self) -> Option<&BinaryObject> {
         if !self.built {
@@ -437,7 +456,7 @@ impl ObjectProducer for Instruction {
         // note that this is matching on self.flavor.mode (the mode the CPU will see at run time)
         match self.flavor.mode {
             AddressingMode::Immediate => self._build_immediate(val, &mut data)?,
-            AddressingMode::Indexed => self._build_indexed(val, &mut data, self.od.indirect)?,
+            AddressingMode::Indexed => self._build_indexed(addr, val, &mut data, self.od.indirect)?,
             AddressingMode::Inherent => {
                 // there is no more to do in this case; the op code is the entire object
             }
@@ -518,12 +537,6 @@ impl Rmb {
     }
 }
 impl ObjectProducer for Rmb {
-    fn bob_clone(&self) -> Option<BinaryObject> {
-        if !self.built {
-            return None;
-        }
-        Some(self.bob.clone())
-    }
     fn bob_ref(&self) -> Option<&BinaryObject> {
         if !self.built {
             return None;
@@ -583,12 +596,6 @@ impl Fxb {
     }
 }
 impl ObjectProducer for Fxb {
-    fn bob_clone(&self) -> Option<BinaryObject> {
-        if !self.built {
-            return None;
-        }
-        Some(self.bob.clone())
-    }
     fn bob_ref(&self) -> Option<&BinaryObject> {
         if !self.built {
             return None;
@@ -659,12 +666,6 @@ impl ObjectProducer for Org {
         let addr = self.node.eval(lr, 0, false)?;
         Ok(Some(addr.u16()))
     }
-    fn bob_clone(&self) -> Option<BinaryObject> {
-        if !self.built {
-            return None;
-        }
-        Some(self.bob.clone())
-    }
     fn bob_ref(&self) -> Option<&BinaryObject> {
         if !self.built {
             return None;
@@ -708,12 +709,6 @@ impl Fcc {
     }
 }
 impl ObjectProducer for Fcc {
-    fn bob_clone(&self) -> Option<BinaryObject> {
-        if !self.built {
-            return None;
-        }
-        Some(self.bob.clone())
-    }
     fn bob_ref(&self) -> Option<&BinaryObject> {
         if !self.built {
             return None;

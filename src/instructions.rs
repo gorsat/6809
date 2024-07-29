@@ -52,18 +52,19 @@ pub fn init() {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum AddressingMode {
     Immediate = 0,
-    Direct = 1,
-    Indexed = 2,
-    Extended = 3,
-    Inherent = 4,
-    Relative = 5,
+    Direct,
+    Indexed,
+    Extended,
+    Inherent,
+    Relative,
 
     /****** added these only for the assembler ******/
-    Register = 6,
-    Offset = 7,
-    IncDec = 8,
+    Register,
+    Offset,
+    IncDec,
+    PCRelative,
     /************************************************/
-    Error = 9,
+    Error,
 }
 impl From<usize> for AddressingMode {
     fn from(am: usize) -> AddressingMode {
@@ -77,6 +78,7 @@ impl From<usize> for AddressingMode {
             6 => AddressingMode::Register,
             7 => AddressingMode::Offset,
             8 => AddressingMode::IncDec,
+            9 => AddressingMode::PCRelative,
             _ => {
                 panic!("Invalid AddressingMode")
             }
