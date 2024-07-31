@@ -235,7 +235,7 @@ pub enum IncDecType {
 pub struct OperandDescriptor {
     pub indirect: bool,
     pub mode: AddressingMode,
-    pub force_mode: bool,
+    pub force_extended_mode: bool,
     pub value: Option<ValueNode>,
     pub regs: Option<Vec<String>>,
     pub incdec: Option<IncDecType>,
@@ -245,7 +245,7 @@ impl OperandDescriptor {
         OperandDescriptor {
             indirect: false,
             mode: AddressingMode::Inherent,
-            force_mode: false,
+            force_extended_mode: false,
             value: None,
             regs: None,
             incdec: None,
@@ -360,7 +360,7 @@ impl Parser {
                 // this is extended mode
                 let value = self.parse_valexpr(&mut token_iter)?;
                 od.mode = AddressingMode::Extended;
-                od.force_mode = true;
+                od.force_extended_mode = true;
                 od.value = Some(value);
             }
             TokenType::LBracket => {
@@ -424,7 +424,11 @@ impl Parser {
             if let Some(reg1) = token_iter.next().filter(|t| t.ttype == TokenType::Register) {
                 let reg = reg1.clean();
                 od.value = Some(value);
-                od.mode = if reg == "PCR" {AddressingMode::PCRelative} else {AddressingMode::Offset};
+                od.mode = if reg == "PCR" {
+                    AddressingMode::PCRelative
+                } else {
+                    AddressingMode::Offset
+                };
                 od.regs = Some(vec![reg]);
                 return Ok(());
             }

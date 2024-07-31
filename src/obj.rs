@@ -118,7 +118,7 @@ impl Instruction {
                 // if the DP hasn't changed yet and the address fits in 8 bits then try using Direct mode.
                 // if it doesn't work then we'll have to change at build time
                 } else if !dp_dirty
-                    && !od.force_mode
+                    && !od.force_extended_mode
                     && od
                         .value
                         .as_ref()
@@ -386,7 +386,7 @@ impl ObjectProducer for Instruction {
         }
         // should we try to optimize for Direct mode addressing?
         if !dp_dirty
-            && !self.od.force_mode
+            && !self.od.force_extended_mode
             && (val.u16() < 0x100)
             && (self.flavor.mode == AddressingMode::Extended || self.flavor.mode == AddressingMode::Direct)
         {
@@ -402,6 +402,7 @@ impl ObjectProducer for Instruction {
             }
         } else if (self.flavor.mode == AddressingMode::Direct) && (dp_dirty || (val.u16() > 0xff)) {
             if self.trying_direct {
+                // the assembler is trying to optimize for direct mode
                 if let Some(detail) = self.id.get_mode_detail(AddressingMode::Extended) {
                     // failed to optimize into direct mode; switch back to extended
                     self.flavor = Flavor {
@@ -417,8 +418,10 @@ impl ObjectProducer for Instruction {
                     panic!("Is there an instruction that supports Direct mode but not Extended?")
                 }
             } else {
-                // programmer tried to force direct mode but it failed
-                return Err(syntax_err!("invalid use of direct mode addressing"));
+                // direct mode was specified; force it
+                val = u8u16::u8(val.lsb());
+                min_size = self.flavor.detail.sz;
+                working_size = self.flavor.detail.op_size() + 1;
             }
         }
         if self.flavor.mode == AddressingMode::Indexed || self.od.mode == AddressingMode::Register {

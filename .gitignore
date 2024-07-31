@@ -3,4 +3,5 @@
 *.sym
 *.hex
 .DS_Store
+ExBasROM.asm
 .vscode
