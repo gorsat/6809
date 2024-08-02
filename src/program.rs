@@ -16,6 +16,35 @@ lazy_static! {
 }
 
 #[derive(Debug)]
+pub enum DirectPage {
+    Zero,
+    Value(ValueNode),
+    None,
+}
+impl DirectPage {
+    pub fn is_zero(&self) -> bool { matches!(self, DirectPage::Zero) }
+    pub fn is_none(&self) -> bool { matches!(self, DirectPage::None) }
+    pub fn matches_value_node(&self, other: &ValueNode, lr: &dyn LabelResolver, addr: u16) -> bool {
+        if let Ok(rhs) = other.eval(lr, addr, false) {
+            return self.matches_value(rhs, lr, addr);
+        }
+        false
+    }
+    pub fn matches_value(&self, value: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
+        let v = value.msb().unwrap_or(0u8);
+        match self {
+            DirectPage::None => false,
+            DirectPage::Zero => v == 0,
+            DirectPage::Value(n) => n
+                .eval(lr, addr, false)
+                .ok()
+                .map(|u| u.msb().unwrap_or(0) == v)
+                .unwrap_or(false),
+        }
+    }
+}
+
+#[derive(Debug)]
 struct MacroLineSegment {
     pub s: String,        // the text fragment
     pub n: Option<usize>, // the index of the arg that should be prepended to this fragment
@@ -328,7 +357,7 @@ pub struct Program {
     pub _macros: HashMap<String, Macro>, // all macros
     pub results: Vec<TestCriterion>,     // expected results for test criteria
     pub segs: ProgramSegments,           // program segments (defined by ORG directive)
-    pub dp_dirty: bool,                  // true if DP register has been written to
+    pub dp: DirectPage,                  // DP value the assembler should assume for automatic direct mode optimization
 }
 impl LabelResolver for Program {
     fn resolve(&self, label: &str) -> Option<u8u16> { self.labels.get_value(label) }
@@ -354,7 +383,7 @@ impl Program {
             _macros: macros,
             results: Vec::new(),
             segs: ProgramSegments::new(),
-            dp_dirty: false,
+            dp: DirectPage::Zero,
         }
     }
     pub fn write_listing(&self, f: &mut dyn io::Write) -> Result<(), io::Error> {

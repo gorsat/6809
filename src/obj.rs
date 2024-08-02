@@ -50,11 +50,7 @@ pub trait ObjectProducer: std::fmt::Debug + std::fmt::Display {
     // given an address and label definitions, provide the upper bound on the size of this object
     fn current_size(&self, _: u16, _: &dyn LabelResolver) -> Result<u16, Error> { Ok(0u16) }
     // given an address and label definitions, produce this object
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp_dirty: bool) -> Result<&BinaryObject, Error>;
-
-    // returns true if the object results in potential DP register change
-    fn changes_dp(&self) -> bool { false }
-
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp: &DirectPage) -> Result<&BinaryObject, Error>;
     // get a ref to this producer's object (if there is one)
     fn bob_ref(&self) -> Option<&BinaryObject>;
 }
@@ -67,30 +63,19 @@ pub struct Instruction {
     pub od: OperandDescriptor,                 // info about the observed operand (if any)
     pub flavor: instructions::Flavor,          // flavor determined by id and od
     bob: BinaryObject,                         // binary representation of this instruction
-    dp_changed: bool,
     built: bool,
     trying_direct: bool,
 }
 impl Instruction {
     pub fn try_new(
-        id: &'static instructions::Descriptor, od: OperandDescriptor, addr: u16, lr: &dyn LabelResolver, dp_dirty: bool,
+        id: &'static instructions::Descriptor, od: OperandDescriptor, addr: u16, lr: &dyn LabelResolver,
+        dp: &DirectPage,
     ) -> Result<Self, Error> {
         // translate from the assembler's addressing mode to the runtime addressing mode
-        let mut dp_changed = false;
         let mut trying_direct = false;
         let rt_mode = match od.mode {
             AddressingMode::Register => {
                 // the parser uses this designation for any operand that includes a list of registers, i.e. R1,R2[,Rn]*
-                // check to see if we're modifying the DP register
-                if let Some(regs) = &od.regs {
-                    if regs.contains(&"DP".to_string()) {
-                        if id.name == "TFR" {
-                            dp_changed = regs.len() > 1 && regs[1].eq("DP");
-                        } else {
-                            dp_changed = id.name == "EXG" || id.name == "PULS" || id.name == "PULU";
-                        }
-                    }
-                }
                 // we use OperandType to differentiate
                 match id.ot {
                     OperandType::None => {
@@ -115,14 +100,10 @@ impl Instruction {
                     && id.get_mode_detail(AddressingMode::Relative).is_some()
                 {
                     AddressingMode::Relative
-                // if the DP hasn't changed yet and the address fits in 8 bits then try using Direct mode.
-                // if it doesn't work then we'll have to change at build time
-                } else if !dp_dirty
-                    && !od.force_extended_mode
-                    && od
-                        .value
-                        .as_ref()
-                        .map_or(false, |v| v.eval(lr, addr, false).map_or(false, |u| u.u16() < 0x100))
+                // if we're not forcing extended mode, and DP is set, and the operand's MSB matches DP then try using Direct mode.
+                } else if !od.force_extended_mode
+                    && od.value.is_some()
+                    && dp.matches_value_node(od.value.as_ref().unwrap(), lr, addr)
                 {
                     trying_direct = true;
                     AddressingMode::Direct
@@ -148,7 +129,6 @@ impl Instruction {
                     size: 0,
                     data: None,
                 },
-                dp_changed,
                 built: false,
                 trying_direct,
             });
@@ -228,6 +208,9 @@ impl Instruction {
                             post_byte |= val.u8() & 0b11111; // store offset in bottom 5 bits
                             post_byte &= 0x7f;
                             add_offset = false;
+                        } else {
+                            // there is an offset following the post_byte
+                            post_byte |= 0b1000
                         }
                     }
                 }
@@ -353,7 +336,7 @@ impl ObjectProducer for Instruction {
     /// E.g., the assembler would see operand "A,X" as AddressingMode::Register but the CPU will
     /// see it as AddressingMode::Indexed with a postbyte that describes the register offset
     ///
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp_dirty: bool) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp: &DirectPage) -> Result<&BinaryObject, Error> {
         let mut val = u8u16::u8(0);
         let mut sval = u8u16::u8(0);
         let mut data: Vec<u8u16> = Vec::new();
@@ -384,45 +367,30 @@ impl ObjectProducer for Instruction {
             // other cases all require a value
             return Err(syntax_err!("missing value in operand"));
         }
-        // should we try to optimize for Direct mode addressing?
-        if !dp_dirty
-            && !self.od.force_extended_mode
-            && (val.u16() < 0x100)
-            && (self.flavor.mode == AddressingMode::Extended || self.flavor.mode == AddressingMode::Direct)
-        {
-            if let Some(detail) = self.id.get_mode_detail(AddressingMode::Direct) {
-                self.flavor = Flavor {
-                    desc: self.id,
-                    mode: AddressingMode::Direct,
-                    detail,
-                };
-                val = u8u16::u8(val.lsb());
-                min_size = self.flavor.detail.sz;
-                working_size = self.flavor.detail.op_size() + 1;
-            }
-        } else if (self.flavor.mode == AddressingMode::Direct) && (dp_dirty || (val.u16() > 0xff)) {
-            if self.trying_direct {
-                // the assembler is trying to optimize for direct mode
-                if let Some(detail) = self.id.get_mode_detail(AddressingMode::Extended) {
-                    // failed to optimize into direct mode; switch back to extended
-                    self.flavor = Flavor {
-                        desc: self.id,
-                        mode: AddressingMode::Extended,
-                        detail,
-                    };
-                    val = u8u16::u16(val.u16());
-                    min_size = self.flavor.detail.sz;
-                    working_size = self.flavor.detail.op_size() + 2;
-                    self.trying_direct = false;
-                } else {
-                    panic!("Is there an instruction that supports Direct mode but not Extended?")
-                }
-            } else {
-                // direct mode was specified; force it
-                val = u8u16::u8(val.lsb());
-                min_size = self.flavor.detail.sz;
-                working_size = self.flavor.detail.op_size() + 1;
-            }
+        // if we're attempting automatic direct mode optimization, then make sure the EA still sits within the direct page
+        if self.trying_direct && !dp.matches_value(val, lr, addr) {
+            // the effective address is not within the current direct page
+            // switch back to extended mode
+            let detail = self
+                .id
+                .get_mode_detail(AddressingMode::Extended)
+                .expect("instruction can't support direct but not extended mode addressing");
+            self.flavor = Flavor {
+                desc: self.id,
+                mode: AddressingMode::Extended,
+                detail,
+            };
+            val = u8u16::u16(val.u16());
+            min_size = self.flavor.detail.sz;
+            working_size = self.flavor.detail.op_size() + 2;
+            self.trying_direct = false;
+        }
+        if self.flavor.mode == AddressingMode::Direct {
+            // we're definitely employing direct mode
+            // make sure both the operand value and the instruction size reflect this
+            val = u8u16::u8(val.lsb());
+            min_size = self.flavor.detail.sz;
+            working_size = self.flavor.detail.op_size() + 1;
         }
         if self.flavor.mode == AddressingMode::Indexed || self.od.mode == AddressingMode::Register {
             // use the signed evaluation of the operand
@@ -488,7 +456,7 @@ impl ObjectProducer for Instruction {
                                 self.id = desc;
                                 self.flavor.desc = desc;
                                 self.flavor.detail = desc.get_mode_detail(AddressingMode::Relative).unwrap();
-                                return self.build(addr, lr, dp_dirty);
+                                return self.build(addr, lr, dp);
                             }
                         }
                         panic!("failed to convert Branch operation to LongBranch")
@@ -513,8 +481,6 @@ impl ObjectProducer for Instruction {
         self.built = true;
         Ok(&self.bob)
     }
-
-    fn changes_dp(&self) -> bool { self.dp_changed }
 }
 /// Builds a BinaryObject given the operand of an RMB (Reserve Memory Bytes) statement.
 #[derive(Debug)]
@@ -546,7 +512,7 @@ impl ObjectProducer for Rmb {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: bool) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
         // if this value node can't be evaluated then it's invalid
         let u = self.node.eval(lr, addr, false)?.u16();
         self.size = Some(u);
@@ -609,7 +575,7 @@ impl ObjectProducer for Fxb {
         Ok(self.bytes_per_node * self.nodes.len() as u16)
     }
 
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: bool) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
         // Fxb renders one or more bytes at the current address
         let mut data = Vec::new();
         for node in &self.nodes {
@@ -675,7 +641,7 @@ impl ObjectProducer for Org {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: bool) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
         // if this value node can't be evaluated then it's invalid
         self.bob.addr = self.node.eval(lr, addr, false)?.u16();
         self.built = true;
@@ -718,7 +684,7 @@ impl ObjectProducer for Fcc {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, _: &dyn LabelResolver, _: bool) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, _: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
         self.bob.addr = addr;
         self.built = true;
         Ok(&self.bob)
