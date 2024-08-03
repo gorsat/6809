@@ -214,6 +214,9 @@ impl Instruction {
                         }
                     }
                 }
+                if val.is_u8() && val.u8() > 127 {
+                    val = u8u16::u16(val.u16()) 
+                }
                 if add_offset && !val.is_u8() {
                     // offset requires 2 bytes
                     post_byte |= 1;
