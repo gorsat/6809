@@ -82,8 +82,14 @@ impl TestCriterion {
     }
     pub fn eval(&self, core: &Core) -> Result<(), Error> {
         let mut lhs_size = 1u16;
-        let lhs = self.lhs.as_ref().ok_or_else(||general_err!("TestCriterion missing LHS"))?;
-        let rhs = self.rhs.as_ref().ok_or_else(||general_err!("TestCriterion missing RHS"))?;
+        let lhs = self
+            .lhs
+            .as_ref()
+            .ok_or_else(|| general_err!("TestCriterion missing LHS"))?;
+        let rhs = self
+            .rhs
+            .as_ref()
+            .ok_or_else(|| general_err!("TestCriterion missing RHS"))?;
         let lhs_val = match lhs {
             RegOrAddr::Reg(reg) => {
                 lhs_size = registers::reg_size(*reg);
@@ -119,11 +125,12 @@ impl TestCriterion {
 }
 impl fmt::Display for TestCriterion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Some(lhs) = &self.lhs {
-            if let Some(rhs) = &self.rhs {
-                return write!(f, "{} = {}", lhs, rhs);
-            }
-        }
-        write!(f, "<{} = {}>?", self.lhs_src, self.rhs_src)
+        let statement = format!("{} = {}", self.lhs_src, self.rhs_src,);
+        let actual = format!(
+            "({} = {})",
+            self.lhs.as_ref().map(|r| r.to_string()).unwrap_or("?".to_string()),
+            self.rhs.as_ref().map(|r| r.to_string()).unwrap_or("?".to_string())
+        );
+        write!(f, "{:20} {:16}", statement, actual,)
     }
 }
