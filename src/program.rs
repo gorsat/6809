@@ -240,7 +240,7 @@ impl ProgramLabels {
         // otherwise, the value of the label is its address
         if let Some(label) = self.map.get(name) {
             if let Some(node) = label.node.as_ref() {
-                node.eval(self, label.addr, true).ok()
+                node.eval(self, label.addr, false).ok()
             } else {
                 Some(u8u16::u16(label.addr))
             }

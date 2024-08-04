@@ -68,8 +68,8 @@ pub struct Instruction {
 }
 impl Instruction {
     pub fn try_new(
-        id: &'static instructions::Descriptor, od: OperandDescriptor, addr: u16, lr: &dyn LabelResolver,
-        dp: &DirectPage,
+        id: &'static instructions::Descriptor, od: OperandDescriptor, _addr: u16, _lr: &dyn LabelResolver,
+        _dp: &DirectPage,
     ) -> Result<Self, Error> {
         // translate from the assembler's addressing mode to the runtime addressing mode
         let mut trying_direct = false;
@@ -100,11 +100,9 @@ impl Instruction {
                     && id.get_mode_detail(AddressingMode::Relative).is_some()
                 {
                     AddressingMode::Relative
-                // if we're not forcing extended mode, and DP is set, and the operand's MSB matches DP then try using Direct mode.
-                } else if !od.force_extended_mode
-                    && od.value.is_some()
-                    && dp.matches_value_node(od.value.as_ref().unwrap(), lr, addr)
-                {
+                // if we're not forcing extended mode then try direct mode
+                // if it won't work then it will get changed back to extended during build
+                } else if !od.force_extended_mode {
                     trying_direct = true;
                     AddressingMode::Direct
                 } else {
@@ -213,9 +211,6 @@ impl Instruction {
                             post_byte |= 0b1000
                         }
                     }
-                }
-                if val.is_u8() && val.u8() > 127 {
-                    val = u8u16::u16(val.u16()) 
                 }
                 if add_offset && !val.is_u8() {
                     // offset requires 2 bytes
@@ -430,7 +425,7 @@ impl ObjectProducer for Instruction {
         // note that this is matching on self.flavor.mode (the mode the CPU will see at run time)
         match self.flavor.mode {
             AddressingMode::Immediate => self._build_immediate(val, &mut data)?,
-            AddressingMode::Indexed => self._build_indexed(addr, val, &mut data, self.od.indirect)?,
+            AddressingMode::Indexed => self._build_indexed(addr, sval, &mut data, self.od.indirect)?,
             AddressingMode::Inherent => {
                 // there is no more to do in this case; the op code is the entire object
             }

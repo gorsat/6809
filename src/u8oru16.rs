@@ -101,8 +101,13 @@ impl u8u16 {
         }
     }
     pub fn force_signed(self, negative: bool) -> (Self, bool) {
-        let (neg, overflow) = self.overflowing_negate();
-        (if negative { neg } else { self }, overflow)
+        if negative {
+            self.overflowing_negate()
+        } else if self.is_u8() && self.lsb() > 0x7f {
+            (u8u16::u16(self.u16()), true)
+        } else {
+            (self, false)
+        }
     }
 
     pub fn sign_extended(self) -> Self {

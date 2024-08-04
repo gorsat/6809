@@ -95,7 +95,7 @@ impl ValueNode {
     /// Evaluate this ValueNode given an address and LabelResolver.
     /// If this ValueNode (or its children) require a label that the LabelResolver can't resolve
     /// then the result will be an Error of ErrorKind::Reference.
-    // Indicate signed = true if the outcome of an evaluation MIGHT be signed.
+    /// Use signed = true if a signed value (i.e. i8 or i16) is required. 
     pub fn eval(&self, lr: &dyn LabelResolver, addr: u16, signed: bool) -> Result<u8u16, Error> {
         match self.token.ttype {
             TokenType::Number => {
@@ -681,7 +681,7 @@ impl Parser {
         } else if let Ok(node) = self.parse_valexpr(&mut token_iter) {
             // value token(s) consumed by parse_valexpr; now evaluate and store the addr
             // Note: test criteria cannot use location reference (obviously, right?)
-            let addr = node.eval(lr, 0, true)?;
+            let addr = node.eval(lr, 0, false)?;
             tc.lhs = Some(RegOrAddr::Addr(addr.u16()));
         } else {
             return Err(syntax_err!(
@@ -699,7 +699,7 @@ impl Parser {
         }
         // parse and evaluate the rhs
         let node = self.parse_valexpr(&mut token_iter)?;
-        let val = node.eval(lr, 0, true)?;
+        let val = node.eval(lr, 0, false)?;
         if rhs_is_value {
             tc.rhs = Some(AddrOrVal::Val(val));
         } else {
