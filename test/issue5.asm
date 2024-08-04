@@ -31,7 +31,7 @@ x4  leax    128,x   ; should be 30 89 0080 (+128 doesn't fit in 8 bits)
                     ;! x4+2 = #$0080
 
 x5  leax    -128,x  ; should be 30 88 80 (-128 does fit in 8 bits)
-                    ;! x5 = #$3080
+                    ;! x5 = #$3088
                     ;! x5+2 = #$80
 
 x6  leax    -129,x  ; should be 30 89 FF7F (-129 doesn't fit in 8 bits)

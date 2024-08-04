@@ -89,14 +89,11 @@ impl u8u16 {
     }
     pub fn overflowing_negate(self) -> (Self, bool) {
         match self {
-            u8u16::u8(b) => {
-                if b > 0x7f {
-                    let u = u8u16::u16(b as u16);
-                    (u.twos_complement(), true)
-                } else {
-                    (self.twos_complement(), false)
-                }
-            }
+            u8u16::u8(b) => match b.cmp(&0x80) {
+                std::cmp::Ordering::Less => (self.twos_complement(), false),
+                std::cmp::Ordering::Equal => (self, false),
+                std::cmp::Ordering::Greater => (u8u16::u16(b as u16).twos_complement(), true),
+            },
             u8u16::u16(w) => (self.twos_complement(), w > 0x7fff),
         }
     }
