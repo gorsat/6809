@@ -21,16 +21,20 @@ pub enum DirectPage {
     Value(ValueNode),
     None,
 }
+use std::sync::Mutex;
+lazy_static! {
+    pub static ref DP_LIST: Mutex<Vec<DirectPage>> = Mutex::new(Vec::new());
+}
 impl DirectPage {
     pub fn is_zero(&self) -> bool { matches!(self, DirectPage::Zero) }
     pub fn is_none(&self) -> bool { matches!(self, DirectPage::None) }
-    pub fn matches_value_node(&self, other: &ValueNode, lr: &dyn LabelResolver, addr: u16) -> bool {
+    pub fn __matches_value_node(&self, other: &ValueNode, lr: &dyn LabelResolver, addr: u16) -> bool {
         if let Ok(rhs) = other.eval(lr, addr, false) {
-            return self.matches_value(rhs, lr, addr);
+            return self.__matches_value(rhs, lr, addr);
         }
         false
     }
-    pub fn matches_value(&self, value: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
+    pub fn __matches_value(&self, value: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
         let v = value.msb().unwrap_or(0u8);
         match self {
             DirectPage::None => false,
@@ -41,6 +45,21 @@ impl DirectPage {
                 .map(|u| u.msb().unwrap_or(0) == v)
                 .unwrap_or(false),
         }
+    }
+    pub fn add(dp: DirectPage) { DP_LIST.lock().unwrap().push(dp) }
+    pub fn current_index() -> usize { DP_LIST.lock().unwrap().len() - 1 }
+    pub fn matches_value(dpi: usize, value: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
+        DP_LIST
+            .lock()
+            .unwrap()
+            .get(dpi)
+            .expect("invalid DP index?!")
+            .__matches_value(value, lr, addr)
+    }
+    pub fn reset() {
+        let mut list = DP_LIST.lock().unwrap();
+        list.clear();
+        list.push(DirectPage::Zero);
     }
 }
 
@@ -357,7 +376,6 @@ pub struct Program {
     pub _macros: HashMap<String, Macro>, // all macros
     pub results: Vec<TestCriterion>,     // expected results for test criteria
     pub segs: ProgramSegments,           // program segments (defined by ORG directive)
-    pub dp: DirectPage,                  // DP value the assembler should assume for automatic direct mode optimization
 }
 impl LabelResolver for Program {
     fn resolve(&self, label: &str) -> Option<u8u16> { self.labels.get_value(label) }
@@ -375,6 +393,7 @@ impl fmt::Display for Program {
 }
 impl Program {
     pub fn new(lines: Vec<ProgramLine>, macros: HashMap<String, Macro>) -> Self {
+        DirectPage::reset();
         Program {
             addr: 0,
             line_number: 0,
@@ -383,7 +402,6 @@ impl Program {
             _macros: macros,
             results: Vec::new(),
             segs: ProgramSegments::new(),
-            dp: DirectPage::Zero,
         }
     }
     pub fn write_listing(&self, f: &mut dyn io::Write) -> Result<(), io::Error> {

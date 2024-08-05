@@ -314,7 +314,7 @@ impl Parser {
     ///
     /// Grammar for operands:
     /// ```text
-    ///  operand = "#" valexpr | "<" valexpr | "[" opexpr "]" | opexpr
+    ///  operand = "#" valexpr | "<" valexpr | ">" valexpr | "[" opexpr "]" | opexpr
     ///  opexpr = valexpr | valexpr, reg | reg, reg | ,incdec
     ///  valexpr (pemdas) = mulexpr [addop mulexpr]
     ///  valexpr (l-to-r) = powexpr [<addop|mulop> powexpr]

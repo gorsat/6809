@@ -261,7 +261,7 @@ impl Assembler {
             // Does the line contain an operation (or assembler directive)?
             if line.operation.is_some() {
                 // parse the operation and potentially create the corresponding binary object
-                self.process_op_line(&mut program.segs, &mut program.labels, line, &mut program.dp)?;
+                self.process_op_line(&mut program.segs, &mut program.labels, line)?;
                 // get any/all object address and size info
                 if let Some(obj) = line.obj.as_ref() {
                     // check to see if this object has a static address assignment
@@ -319,7 +319,7 @@ impl Assembler {
             line.addr = expected_addr;
             if let Some(op) = line.obj.as_mut() {
                 // try to build the object
-                let res = op.build(expected_addr, &program.labels, &program.dp);
+                let res = op.build(expected_addr, &program.labels);
                 if let Err(e) = res {
                     return Err(line_err!(line.src_line_num, e.kind, e.msg.as_str()));
                 }
@@ -385,10 +385,10 @@ impl Assembler {
     /// Otherwise, an Error is returned. On success, an ObjectProducer for the operation
     /// is added to the provided ProgramLine.
     fn process_op_line(
-        &self, segs: &mut ProgramSegments, labels: &mut ProgramLabels, line: &mut ProgramLine, dp: &mut DirectPage,
+        &self, segs: &mut ProgramSegments, labels: &mut ProgramLabels, line: &mut ProgramLine,
     ) -> Result<(), Error> {
         // first see if this is actually an assembler directive
-        if self.process_directive_line(segs, labels, line, dp)? {
+        if self.process_directive_line(segs, labels, line)? {
             // the line contains an assembler directive and it was processed without error
             return Ok(());
         }
@@ -403,7 +403,7 @@ impl Assembler {
             // there may be an operand and it may be required so try to parse it
             self.parser.parse_operand(line.get_operand())?
         };
-        line.obj = Some(Box::new(Instruction::try_new(desc, od, line.addr, labels, dp)?));
+        line.obj = Some(Box::new(Instruction::try_new(desc, od)?));
         Ok(())
     }
 
@@ -416,7 +416,7 @@ impl Assembler {
     ///  - ```Err(Error)``` line is a directive but is invalid
     ///
     fn process_directive_line(
-        &self, segs: &mut ProgramSegments, labels: &mut ProgramLabels, line: &mut ProgramLine, dp: &mut DirectPage,
+        &self, segs: &mut ProgramSegments, labels: &mut ProgramLabels, line: &mut ProgramLine,
     ) -> Result<bool, Error> {
         match line.get_operation() {
             "ORG" => {
@@ -510,15 +510,15 @@ impl Assembler {
                 // do nothing...
             }
             "SETDP" => {
-                if line.operand.is_none() {
-                    *dp = DirectPage::None;
+                // SETDP sets the current value the assembler should use for DP when determining
+                // whether to automatically employ direct mode addressing.
+                // Note: This has no effect on the value of DP in the processor. The developer must
+                // ensure that the DP register is set in accordance with whatever value they've provide via SETDP.
+                let dp = line.get_operand();
+                if dp.is_empty() || self.re_comment_or_blank_line.is_match(dp) {
+                    DirectPage::add(DirectPage::None)
                 } else {
-                    // SETDP sets the current value the assembler should use for DP when determining
-                    // whether to automatically employ direct mode addressing.
-                    // The operand of SETDP is evaluated as a 16-bit word and the MSB is used as the value for DP.
-                    // Note: This has no effect on the value of DP in the processor. The developer must
-                    // ensure that the DP register is set in accordance with whatever value they've provide via SETDP.
-                    *dp = DirectPage::Value(self.parser.str_to_value_node(line.get_operand())?);
+                    DirectPage::add(DirectPage::Value(self.parser.str_to_value_node(dp)?));
                 }
             }
             _ => return Ok(false),

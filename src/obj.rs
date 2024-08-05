@@ -50,7 +50,7 @@ pub trait ObjectProducer: std::fmt::Debug + std::fmt::Display {
     // given an address and label definitions, provide the upper bound on the size of this object
     fn current_size(&self, _: u16, _: &dyn LabelResolver) -> Result<u16, Error> { Ok(0u16) }
     // given an address and label definitions, produce this object
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp: &DirectPage) -> Result<&BinaryObject, Error>;
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver) -> Result<&BinaryObject, Error>;
     // get a ref to this producer's object (if there is one)
     fn bob_ref(&self) -> Option<&BinaryObject>;
 }
@@ -64,15 +64,12 @@ pub struct Instruction {
     pub flavor: instructions::Flavor,          // flavor determined by id and od
     bob: BinaryObject,                         // binary representation of this instruction
     built: bool,
-    trying_direct: bool,
+    trying_direct: Option<usize>,
 }
 impl Instruction {
-    pub fn try_new(
-        id: &'static instructions::Descriptor, od: OperandDescriptor, _addr: u16, _lr: &dyn LabelResolver,
-        _dp: &DirectPage,
-    ) -> Result<Self, Error> {
+    pub fn try_new(id: &'static instructions::Descriptor, od: OperandDescriptor) -> Result<Self, Error> {
         // translate from the assembler's addressing mode to the runtime addressing mode
-        let mut trying_direct = false;
+        let mut trying_direct = None;
         let rt_mode = match od.mode {
             AddressingMode::Register => {
                 // the parser uses this designation for any operand that includes a list of registers, i.e. R1,R2[,Rn]*
@@ -103,7 +100,7 @@ impl Instruction {
                 // if we're not forcing extended mode then try direct mode
                 // if it won't work then it will get changed back to extended during build
                 } else if !od.force_extended_mode {
-                    trying_direct = true;
+                    trying_direct = Some(DirectPage::current_index());
                     AddressingMode::Direct
                 } else {
                     AddressingMode::Extended
@@ -334,7 +331,7 @@ impl ObjectProducer for Instruction {
     /// E.g., the assembler would see operand "A,X" as AddressingMode::Register but the CPU will
     /// see it as AddressingMode::Indexed with a postbyte that describes the register offset
     ///
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, dp: &DirectPage) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver) -> Result<&BinaryObject, Error> {
         let mut val = u8u16::u8(0);
         let mut sval = u8u16::u8(0);
         let mut data: Vec<u8u16> = Vec::new();
@@ -366,22 +363,24 @@ impl ObjectProducer for Instruction {
             return Err(syntax_err!("missing value in operand"));
         }
         // if we're attempting automatic direct mode optimization, then make sure the EA still sits within the direct page
-        if self.trying_direct && !dp.matches_value(val, lr, addr) {
-            // the effective address is not within the current direct page
-            // switch back to extended mode
-            let detail = self
-                .id
-                .get_mode_detail(AddressingMode::Extended)
-                .expect("instruction can't support direct but not extended mode addressing");
-            self.flavor = Flavor {
-                desc: self.id,
-                mode: AddressingMode::Extended,
-                detail,
-            };
-            val = u8u16::u16(val.u16());
-            min_size = self.flavor.detail.sz;
-            working_size = self.flavor.detail.op_size() + 2;
-            self.trying_direct = false;
+        if let Some(&dpi) = self.trying_direct.as_ref() {
+            if !DirectPage::matches_value(dpi, val, lr, addr) {
+                // the effective address is not within the current direct page
+                // switch back to extended mode
+                let detail = self
+                    .id
+                    .get_mode_detail(AddressingMode::Extended)
+                    .expect("instruction can't support direct but not extended mode addressing");
+                self.flavor = Flavor {
+                    desc: self.id,
+                    mode: AddressingMode::Extended,
+                    detail,
+                };
+                val = u8u16::u16(val.u16());
+                min_size = self.flavor.detail.sz;
+                working_size = self.flavor.detail.op_size() + 2;
+                self.trying_direct = None;
+            }
         }
         if self.flavor.mode == AddressingMode::Direct {
             // we're definitely employing direct mode
@@ -454,7 +453,7 @@ impl ObjectProducer for Instruction {
                                 self.id = desc;
                                 self.flavor.desc = desc;
                                 self.flavor.detail = desc.get_mode_detail(AddressingMode::Relative).unwrap();
-                                return self.build(addr, lr, dp);
+                                return self.build(addr, lr);
                             }
                         }
                         panic!("failed to convert Branch operation to LongBranch")
@@ -510,7 +509,7 @@ impl ObjectProducer for Rmb {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver) -> Result<&BinaryObject, Error> {
         // if this value node can't be evaluated then it's invalid
         let u = self.node.eval(lr, addr, false)?.u16();
         self.size = Some(u);
@@ -573,7 +572,7 @@ impl ObjectProducer for Fxb {
         Ok(self.bytes_per_node * self.nodes.len() as u16)
     }
 
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver) -> Result<&BinaryObject, Error> {
         // Fxb renders one or more bytes at the current address
         let mut data = Vec::new();
         for node in &self.nodes {
@@ -639,7 +638,7 @@ impl ObjectProducer for Org {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, lr: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, lr: &dyn LabelResolver) -> Result<&BinaryObject, Error> {
         // if this value node can't be evaluated then it's invalid
         self.bob.addr = self.node.eval(lr, addr, false)?.u16();
         self.built = true;
@@ -682,7 +681,7 @@ impl ObjectProducer for Fcc {
         }
         Some(&self.bob)
     }
-    fn build(&mut self, addr: u16, _: &dyn LabelResolver, _: &DirectPage) -> Result<&BinaryObject, Error> {
+    fn build(&mut self, addr: u16, _: &dyn LabelResolver) -> Result<&BinaryObject, Error> {
         self.bob.addr = addr;
         self.built = true;
         Ok(&self.bob)
