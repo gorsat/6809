@@ -95,7 +95,7 @@ impl ValueNode {
     /// Evaluate this ValueNode given an address and LabelResolver.
     /// If this ValueNode (or its children) require a label that the LabelResolver can't resolve
     /// then the result will be an Error of ErrorKind::Reference.
-    /// Use signed = true if a signed value (i.e. i8 or i16) is required. 
+    /// Use signed = true if a signed value (i.e. i8 or i16) is required.
     pub fn eval(&self, lr: &dyn LabelResolver, addr: u16, signed: bool) -> Result<u8u16, Error> {
         match self.token.ttype {
             TokenType::Number => {
@@ -750,11 +750,20 @@ impl Parser {
                         break;
                     }
                     let r = self.get_number_from_hex(&mut current, &mut chars);
-                    if r.is_err() {
+                    if let Ok((tok, neg)) = r {
+                        if neg {
+                            // Tokenizing hex value of the form "$-1f" as if it were written "-$1f"
+                            output.push(Token {
+                                ttype: TokenType::Sub,
+                                raw: "-".to_string(),
+                                value: None,
+                            })
+                        }
+                        output.push(tok)
+                    } else {
                         err_msg = r.err();
                         break;
                     }
-                    output.push(r.unwrap());
                 }
                 '\'' => {
                     current = chars.next();
@@ -881,7 +890,7 @@ impl Parser {
         };
         Ok(Token::new(TokenType::Number, raw, Some(u)))
     }
-    fn get_number_from_hex(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
+    fn get_number_from_hex(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<(Token, bool), String> {
         let mut num: u16 = 0;
         let mut digit_count = 0;
         let mut raw = "$".to_string();
@@ -900,7 +909,7 @@ impl Parser {
                         '\'' => {
                             *current = chars.next();
                             if current.is_some() {
-                                return self.get_number_from_char(current, chars);
+                                return self.get_number_from_char(current, chars).map(|t| (t, false));
                             }
                             return Err("missing character constant".to_string());
                         }
@@ -917,16 +926,12 @@ impl Parser {
             num = (num << 4) + digit.unwrap() as u16;
             *current = chars.next();
         }
-        let mut u = if digit_count > 2 {
+        let u = if digit_count > 2 {
             u8u16::u16(num)
         } else {
             u8u16::u8(num as u8)
         };
-        if negative {
-            let (v, _) = u.force_signed(negative);
-            u = v;
-        }
-        Ok(Token::new(TokenType::Number, raw, Some(u)))
+        Ok((Token::new(TokenType::Number, raw, Some(u)), negative))
     }
     fn get_number_from_decimal(&self, current: &mut Option<char>, chars: &mut Chars) -> Result<Token, String> {
         let mut num: u32 = 0;
