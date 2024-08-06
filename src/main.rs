@@ -108,6 +108,9 @@ fn process_file(filename: &str) -> Result<(), Error> {
 }
 #[cfg(test)]
 mod tests {
+
+    use regex::Regex;
+
     use super::*;
     use std::fs;
     #[test]
@@ -169,6 +172,122 @@ mod tests {
         // check outcome
         assert!(core.ram.write().unwrap()[0x42] == 0x63);
         info!("Rudimentary test complete.");
+        Ok(())
+    }
+    #[test]
+    fn extended_basic() -> Result<(), Error> {
+        // assemble ExBasROM.asm and validate the result against ExBasROM.lst
+        let asm_filename = "test/basic/ExBasROM.asm";
+        let lst_filename = "test/basic/ExBasROM.lst";
+        let output_filename = "test/basic/extended_basic_test.lst";
+        let re_data_line = Regex::new(
+            r"(?i)^([0-9a-f]{4}) ([0-9a-f]{4}) ([0-9a-f]{2})\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?",
+        ).unwrap();
+        let re_cont_line = Regex::new(r"(?i)^[^\n]\s+([0-9a-f]{2})?\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?\s?([0-9a-f]{2})?.*$").unwrap();
+        let asm = Assembler::new();
+        let program = asm.assemble_from_file(asm_filename)?;
+        let mut output_file = fs::File::create(output_filename)?;
+        program.write_listing(&mut output_file)?;
+        let old_list = fs::read_to_string(lst_filename)?;
+        let old_lines = old_list.lines();
+        struct ListLine {
+            num: usize,
+            addr: u16,
+            data: Vec<u8>,
+        }
+        let mut data_lines: HashMap<usize, ListLine> = HashMap::new();
+        let mut current_data_line = 0;
+        for (lst_line_index, old_line) in old_lines.enumerate() {
+            let lst_line_num = lst_line_index + 1;
+            if let Some(bytes) = re_cont_line.captures(old_line) {
+                let ll = data_lines
+                    .get_mut(&current_data_line)
+                    .unwrap_or_else(|| panic!("invalid data continuation, .lst line {lst_line_num}"));
+                for b in bytes.iter().skip(1).flatten() {
+                    ll.data.push(
+                        u8::from_str_radix(b.as_str(), 16)
+                            .unwrap_or_else(|_| panic!("invalid data format, .lst line {lst_line_num}")),
+                    );
+                }
+            } else if let Some(cap) = re_data_line.captures(old_line) {
+                let mut ll = ListLine {
+                    num: cap
+                        .get(1)
+                        .unwrap_or_else(|| panic!("missing src line number, .lst line {lst_line_num}"))
+                        .as_str()
+                        .parse::<usize>()
+                        .unwrap_or_else(|_| panic!("invalid src line number syntax, .lst line {lst_line_num}")),
+                    addr: u16::from_str_radix(
+                        cap.get(2)
+                            .unwrap_or_else(|| panic!("missing address, .lst line {lst_line_num}"))
+                            .as_str(),
+                        16,
+                    )
+                    .unwrap_or_else(|_| panic!("invalid address syntax, .lst line {lst_line_num}")),
+                    data: Vec::new(),
+                };
+                for b in cap.iter().skip(3).flatten() {
+                    ll.data.push(
+                        u8::from_str_radix(b.as_str(), 16)
+                            .unwrap_or_else(|_| panic!("invalid data format, .lst line {lst_line_num}")),
+                    );
+                }
+                current_data_line = ll.num;
+                if let Some(dup) = data_lines.insert(ll.num, ll) {
+                    panic!("duplicate of src line {} encountered in .lst", dup.num);
+                }
+            } else {
+                current_data_line = 0;
+            }
+        }
+        for pl in program.lines {
+            if let Some(prod) = pl.obj {
+                if let Some(bob) = prod.bob_ref() {
+                    if let Some(data) = bob.data.as_ref() {
+                        let ll = data_lines
+                            .get(&pl._prog_line_num)
+                            .unwrap_or_else(|| panic!("no data for line {} of src", pl._prog_line_num));
+                        let mut i = 0;
+                        for u in data.iter() {
+                            if let Some(b) = u.msb() {
+                                if b != ll.data[i] {
+                                    panic!(
+                                        "data mismatch at byte index {i} on line {} of src ({:02X} != {:02X})",
+                                        ll.num, b, ll.data[i]
+                                    )
+                                }
+                                i += 1;
+                            }
+                            if u.lsb() != ll.data[i] {
+                                panic!(
+                                    "data mismatch at byte index {i} on line {} of src ({:02X} != {:02X})",
+                                    ll.num,
+                                    u.lsb(),
+                                    ll.data[i]
+                                )
+                            }
+                            i += 1;
+                        }
+                        data_lines.remove(&pl._prog_line_num);
+                    }
+                }
+            }
+        }
+        if !data_lines.is_empty() {
+            let mut list: Vec<&ListLine> = data_lines.values().collect();
+            list.sort_by_key(|ll| ll.num);
+            list.iter().for_each(|ll| {
+                let mut data = String::new();
+                for b in ll.data.iter() {
+                    data.push_str(&format!("{:02X} ", b));
+                }
+                println!("line:{:04} addr:{:04X} data:{data}", ll.num, ll.addr);
+            });
+            panic!(
+                "{} data lines generated by assembler do not exist in the .lst",
+                data_lines.len()
+            )
+        }
         Ok(())
     }
     #[test]
