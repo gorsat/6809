@@ -45,5 +45,37 @@ a4      stb     table+5     ; extended (auto direct mode is off)
 a5      stb     $101        ; should be direct mode again
                             ;! a5 = #$d701
                             ;! $101 = #$f8
+        decb
+        lda     #2
+        tfr     a,dp
+        setdp   2           ; now we're using $200 as the direct page
+a6      stb     $200        ; should be direct
+                            ;! a6 = #$d700
+                            ;! $200 = #$f7
+        decb
+        setdp   $200        ; still using $200 as the direct page
+a7      stb     $201        ; direct again
+                            ;! a7 = #$d701
+                            ;! $201 = #$f6
+        decb
+        lda     #$7f
+        tfr     a,dp        
+        setdp   $7f00       ; tell the assembler that DP is now $7F
+a8      stb     $7ffe       ; direct
+                            ;! a8 = #$d7fe
+                            ;! $7ffe = #$f5
+        decb
+        deca
+        tfr     a,dp
+        setdp   $7e         ; DP changed to $7E
+a9      stb     $7eee       ; direct
+                            ;! a9 = #$d7ee
+                            ;! $7eee = #$f4
+        decb
+aa      stb     $7fff       ; extended
+                            ;! aa = #$f7
+                            ;! aa+1 = #$7fff
+                            ;! $7fff = #$f3
+
         swi
 table   org     $7f00

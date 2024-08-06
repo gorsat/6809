@@ -364,7 +364,10 @@ impl ObjectProducer for Instruction {
         }
         // if we're attempting automatic direct mode optimization, then make sure the EA still sits within the direct page
         if let Some(&dpi) = self.trying_direct.as_ref() {
-            if !DirectPage::matches_value(dpi, val, lr, addr) {
+            if !DirectPage::is_valid(dpi, lr, addr) {
+                return Err(syntax_err!("invalid Direct Page value supplied to SETDP"));
+            }
+            if !DirectPage::matches_address(dpi, val, lr, addr) {
                 // the effective address is not within the current direct page
                 // switch back to extended mode
                 let detail = self

@@ -28,33 +28,49 @@ lazy_static! {
 impl DirectPage {
     pub fn is_zero(&self) -> bool { matches!(self, DirectPage::Zero) }
     pub fn is_none(&self) -> bool { matches!(self, DirectPage::None) }
-    pub fn __matches_value_node(&self, other: &ValueNode, lr: &dyn LabelResolver, addr: u16) -> bool {
-        if let Ok(rhs) = other.eval(lr, addr, false) {
-            return self.__matches_value(rhs, lr, addr);
+    pub fn __is_valid(&self, lr: &dyn LabelResolver, addr: u16) -> bool {
+        match self {
+            DirectPage::Value(v) => v
+                .eval(lr, addr, false)
+                .ok()
+                .map(|u| u.is_u8() || u.lsb() == 0)
+                .unwrap_or(false),
+            _ => true,
         }
-        false
     }
-    pub fn __matches_value(&self, value: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
-        let v = value.msb().unwrap_or(0u8);
+    pub fn __matches_address(&self, address: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
+        let v = address.msb().unwrap_or(0u8);
         match self {
             DirectPage::None => false,
             DirectPage::Zero => v == 0,
+            // The DP value supplied to SETDP can be either 8-bit or 16-bit.
+            // A match occurs when:
+            //   - if it's 8-bit: it is equal to the MSB of the address
+            //   - if it's 16-bit: its MSB is equal to the MSB of the address
             DirectPage::Value(n) => n
                 .eval(lr, addr, false)
                 .ok()
-                .map(|u| u.msb().unwrap_or(0) == v)
+                .map(|u| u.msb().unwrap_or(u.lsb()) == v)
                 .unwrap_or(false),
         }
     }
     pub fn add(dp: DirectPage) { DP_LIST.lock().unwrap().push(dp) }
     pub fn current_index() -> usize { DP_LIST.lock().unwrap().len() - 1 }
-    pub fn matches_value(dpi: usize, value: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
+    pub fn matches_address(dpi: usize, address: u8u16, lr: &dyn LabelResolver, addr: u16) -> bool {
         DP_LIST
             .lock()
             .unwrap()
             .get(dpi)
             .expect("invalid DP index?!")
-            .__matches_value(value, lr, addr)
+            .__matches_address(address, lr, addr)
+    }
+    pub fn is_valid(dpi: usize, lr: &dyn LabelResolver, addr: u16) -> bool {
+        DP_LIST
+            .lock()
+            .unwrap()
+            .get(dpi)
+            .expect("invalid DP index?!")
+            .__is_valid(lr, addr)
     }
     pub fn reset() {
         let mut list = DP_LIST.lock().unwrap();
