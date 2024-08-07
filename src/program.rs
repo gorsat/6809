@@ -33,6 +33,7 @@ impl DirectPage {
             DirectPage::Value(v) => v
                 .eval(lr, addr, false)
                 .ok()
+                .map(|u| u8u16::from_u16_shrink(u.u16()))
                 .map(|u| u.is_u8() || u.lsb() == 0)
                 .unwrap_or(false),
             _ => true,
@@ -50,6 +51,7 @@ impl DirectPage {
             DirectPage::Value(n) => n
                 .eval(lr, addr, false)
                 .ok()
+                .map(|u| u8u16::from_u16_shrink(u.u16()))
                 .map(|u| u.msb().unwrap_or(u.lsb()) == v)
                 .unwrap_or(false),
         }

@@ -2,6 +2,8 @@
 ; updated direct page addressing with SETDP
         org     $fffe
         fdb     start
+        org     0
+        fcb     $aa,$bb,$cc
 stktop  org     $1000
 start   lds     #stktop
         lda     #1
@@ -24,6 +26,7 @@ a2      stb     >table+2    ; explicit extended mode addressing
                             ;! table+2 = #$fd
         decb
         setdp   table       ; assembler should use table's page as the direct page
+
 a3      stb     table+3     ; implicit direct mode
                             ;! a3 = #$d703
                             ;! table+3 = #$fc
@@ -42,6 +45,7 @@ a4      stb     table+5     ; extended (auto direct mode is off)
                             ;! $100 = #$f9
         decb
         setdp   $100        ; let the assembler know we're using $100 as the direct page
+
 a5      stb     $101        ; should be direct mode again
                             ;! a5 = #$d701
                             ;! $101 = #$f8
@@ -49,11 +53,13 @@ a5      stb     $101        ; should be direct mode again
         lda     #2
         tfr     a,dp
         setdp   2           ; now we're using $200 as the direct page
+
 a6      stb     $200        ; should be direct
                             ;! a6 = #$d700
                             ;! $200 = #$f7
         decb
         setdp   $200        ; still using $200 as the direct page
+
 a7      stb     $201        ; direct again
                             ;! a7 = #$d701
                             ;! $201 = #$f6
@@ -61,13 +67,15 @@ a7      stb     $201        ; direct again
         lda     #$7f
         tfr     a,dp        
         setdp   $7f00       ; tell the assembler that DP is now $7F
+
 a8      stb     $7ffe       ; direct
                             ;! a8 = #$d7fe
                             ;! $7ffe = #$f5
         decb
         deca
         tfr     a,dp
-        setdp   $7e         ; DP changed to $7E
+        setdp   $7e         ; tell the assembler DP changed to $7E
+
 a9      stb     $7eee       ; direct
                             ;! a9 = #$d7ee
                             ;! $7eee = #$f4
@@ -76,6 +84,27 @@ aa      stb     $7fff       ; extended
                             ;! aa = #$f7
                             ;! aa+1 = #$7fff
                             ;! $7fff = #$f3
+
+        lda     #$10
+        tfr     a,dp
+        setdp   start/256   ; tell the assembler that the DP is $10
+
+ab      ldb     2           ; should be extended; and B should now hold $CC
+                            ;! ab = #$f6
+                            ;! ab+1 = #$0002
+
+ac      stb     $7eef       ; plain old extended mode
+                            ;! ac = #$f7
+                            ;! ac+1 = #$7eef
+                            ;! $7eef = #$cc
+
+ad      ldb     a0          ; direct, B should now contain $F7 (STB, direct)
+                            ;! ad = #$d6
+        tst     a0-start    ; dummy op to place a0-start at ad+4
+                            ;! ad+1 = ad+4
+ae      stb     start+5     ; this is direct
+                            ;! ae = #$d7
+                            ;! start+5 = #$f7
 
         swi
 table   org     $7f00
