@@ -159,7 +159,7 @@ The following assembler directives are suppported:
 - **RMB**
 <br>Syntax:```[Label] RMB <expression>```
 <br>Example:```Table rmb 13*14```
-<br>Reserves a block of bytes whose size is given by *expression*. The current program address is increased by this number of bytes, thus the next instruction or data directive will begin at the address just after the reserved bytes. The optional Label will be equal to the address of the first bytes in the reserved block.
+<br>Reserves a block of bytes whose size is given by *expression*. The current program address is increased by this number of bytes, thus the next instruction or data directive will begin at the address just after the reserved bytes. The optional Label will be equal to the address of the first byte in the reserved block.
 - **SETDP**
 <br>Syntax:```      SETDP [<expression>]```
 <br>Example:```     setdp Table/256```
