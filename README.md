@@ -132,6 +132,43 @@ would be replaced with
 ```
 prior to the build process. Macros are not limited in terms of number of lines or parameters. I will caveat this by saying that I have not got around to adding signficant macro tests to the test suite.
 
+### Directives
+The following assembler directives are suppported:
+
+
+- **EQU**
+<br>Syntax: ```Label EQU <expression>```
+<br>Example: ```ANSWER EQU 21*2```
+<br>Sets Label equal to a constant. The constant can be provided as an expression.
+- **FCB**
+<br>Syntax: ```[Label] FCB <expression> [,<expression>...]```
+<br>Example: ```hex_ans fcb $42```
+<br>Sets a byte (or sequence of bytes) in the program binary equal to the evaluated expression(s). Each evaluated expression must fit into 8 bits. The list of expressions must not contain spaces. The optional Label will be equal to the address where the first byte is stored in the binary.
+- **FDB**
+<br>Syntax: ```[Label] FDB <expression> [,<expression>...]```
+<br>Example: ```Magic FDB 378+ANSWER,$face,$45,'E```
+<br>Sets a 16-bit word (or sequence of words) in the program binary equal to the evaluated expression(s). Each evaluated expression must fit into 16 bits. The list of expressions must not contain spaces. The optional Label will be equal to the address where the first word is stored in the binary.
+- **FCC**
+<br>Syntax: ```[Label] FCC <delim><ascii_string><delim>```
+<br>Example: ```Hello FCC "Hello, world!"```
+<br>Stores an ascii string as bytes within the program binary. The deliminators can be any character but they must match one another. Any characters following the second deliminator are ignored. The optional Label will be equal to the address where the first byte of the string is stored in the binary.
+- **ORG**
+<br>Syntax: ```[Label] ORG <expression>```
+<br>Example: ```Start org $1000```
+<br>Sets the current address within the program binary. The next instruction or data directive (e.g. FCB) will begin at the address defined by the expression. The optional Label will be equal to this address.
+- **RMB**
+<br>Syntax:```[Label] RMB <expression>```
+<br>Example:```Table rmb 13*14```
+<br>Reserves a block of bytes whose size is given by *expression*. The current program address is increased by this number of bytes, thus the next instruction or data directive will begin at the address just after the reserved bytes. The optional Label will be equal to the address of the first bytes in the reserved block.
+- **SETDP**
+<br>Syntax:```      SETDP [<expression>]```
+<br>Example:```     setdp Table/256```
+<br>Tells the assembler to assume that the DP register will be set to the value given by *expression* at runtime. This allows the assembler to optimize for direct mode addressing. By default, DP is assumed to be 0. You can turn off direct mode optimization by using SETDP without an expression. If the *expression* evaluates to an 8-bit number then DP is assumed to be equal to that number. If *expression* evaluates to a 16-bit number then the LSB must be equal to 0 and DP is assumed to be equal to the MSB.
+- **END**
+<br>Syntax: ```     END```
+<br>Does nothing. Use the SWI instruction to cleanly terminate a program.
+
+
 ### Test Criteria
 Test criteria are really a feature of the runtime rather than the assembler, but it feels like an assembler feature so I'm covering it here.
 This provides a very quick and simple way to test assembly language programs without having to get into the debugger. 
