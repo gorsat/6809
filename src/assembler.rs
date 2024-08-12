@@ -38,7 +38,7 @@ impl Assembler {
         instructions::init();
         Assembler {
             parser: Parser::new(),
-            re_result_line: Regex::new(r"^\s*;![ \t]*([^\s]+)[ \t]*=[ \t]*([^\s]+)[ \t]*$").unwrap(),
+            re_result_line: Regex::new(r"^\s*;![ \t]*([^\s]+)[ \t]*=[ \t]*([^\s]+)[ \t]*.*$").unwrap(),
             re_comment_or_blank_line: Regex::new(r"^(?:[ \t]*[*;].*)|^[ \t]*$").unwrap(),
             re_macro_args: Regex::new(r"^(?:(?:[^\s,;*]+)(?:(?:[,][ ]*)(?:[^\s,]+))*)").unwrap(),
             re_statement: Regex::new(
