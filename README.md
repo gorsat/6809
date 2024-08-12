@@ -172,20 +172,16 @@ The following assembler directives are suppported:
 ### Test Criteria
 Test criteria are really a feature of the runtime rather than the assembler, but it feels like an assembler feature so I'm covering it here.
 This provides a very quick and simple way to test assembly language programs without having to get into the debugger. 
-As an example, you can quickly confirm left-to-right expression evaluation with the following program
+As an example, you can quickly confirm left-to-right expression evaluation with the following program:
 ```
     lda #2+8/2
     ldb #2+(8/2)
     swi
 ;! a = #5
 ;! b = #6
-```
-The comments that start with a bang are the test criteria.
-There is some documentation on their syntax and rules in [test.rs](src/test.rs).
-
-A program cleanly exits by executing a software interrupt instruction (`swi`).
-At that point, the runtime checks to see if there are any test criteria in the program and, if there are, they are evaluated. 
-If you run the little program listed above:
+``` 
+The comments that start with a bang are called test criteria. The program cleanly exits when it executes the software interrupt instruction (`swi`). At that point, the runtime checks to see if there are any test criteria in the program and, if there are, they are evaluated. 
+So, if you run this little program:
 ```
 cargo run -- test/ooo.asm -r
 ```
@@ -197,7 +193,38 @@ INFO: Validating 2 test criteria
 	A = #$05 --> PASS
 	B = #$06 --> PASS
 ```
-I have found test criteria incredibly useful and I highly recommend their use for anyone writing 6809 assembly language code.
+Here are some rules for using test criteria:
+- Each test criterion must start with `;! `.
+- There can be only one test criterion on a line.
+- Nothing but whitespace can precede the test criterion on the line.
+```
+    lda #10
+; the comment after the following instruction is ignored
+    sta foo  ;! foo = 10
+; but the test criterion on the next line works just fine
+             ;! foo = 10
+```
+- Test criteria can appear on any line of an asm file.
+- The lhs of a test criterion must evaluate to a register name or an address and the value contained within it at the end of the program will be used in the comparison.
+- The rhs of a test criterion must evaluate to an address or a value.
+- If either side of a test criterion evaluates to a 16-bit value then a 16-bit comparison is performed. Otherwise, an 8-bit comparison is performed. Note that address reads are 8-bit by default so when you compare the contents of two addresses, you're comparing one byte.
+```
+; For this program:
+        ldx #$fa
+        stx $fa
+        swi
+foo     org     $f9
+; These are all valid, passing test criteria:
+;! x = #$fa       <-- compare X to the number 00fa
+;! x = $fa        <-- compare X to the 16-bits at address 00fa
+;! foo+2 = #$fa   <-- compare the 8-bits at address foo+2 (00fb) to the value fa
+;! foo+1 = #$00fa <-- compare the 16-bits at address foo+1 (00fa) to the value 00fa
+;! x = foo+1      <-- compare X to the 16-bits at address foo+1 (00fa)
+```
+
+Even though you can place test criteria on any line of an ASM file, they will only be evaluated after the program has completed execution. Hence, if you want to keep comparing, say, the current contents of a register, then you should store those values sequentially in a list and then compare individual list entries via test criteria (e.g. see the use of `table` in [issue4.asm](test/issue4.asm)). 
+
+There is more documentation on test criteria syntax and rules in [test.rs](src/test.rs).
 
 ## Output Files
 By default, the assembler just compiles the given .asm/.s file into 6809 machine code,
