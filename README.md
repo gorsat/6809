@@ -200,9 +200,9 @@ Here are some rules for using test criteria:
 ```
     lda #10
 ; the comment after the following instruction is ignored
-    sta foo  ;! foo = 10
+    sta foo  ;! foo = #10
 ; but the test criterion on the next line works just fine
-             ;! foo = 10
+             ;! foo = #10
 ```
 - Test criteria can appear on any line of an asm file.
 - The lhs of a test criterion must evaluate to a register name or an address and the value contained within it at the end of the program will be used in the comparison.
