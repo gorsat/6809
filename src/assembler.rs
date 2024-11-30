@@ -50,14 +50,6 @@ impl Assembler {
         }
     }
 
-    /*
-    TODO: Support for INC (include) directive
-    - global src_files: Vec of filenames where index in src_files is the src_file_id
-    - every line in a program and every macro definition includes src_file_id along with src_line_num
-    - stack of src_file_id we use to check for INC recursion
-    - load_asm_file(prog_lines: &mut Vec<ProgramLine>, macros: &mut HashMap<)
-    - error reporting needs to provide the relevant file name and line number(s)
-    */
     fn load_asm_file(
         &self, file_name: &str, path_stack: &mut Vec<PathBuf>, prog_lines: &mut Vec<ProgramLine>,
         macros: &mut HashMap<String, Macro>,
