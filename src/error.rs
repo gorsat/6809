@@ -22,6 +22,8 @@ pub enum ErrorKind {
     Test,
     /// error encountered due to the machine code program
     Runtime,
+    /// .include recursion error
+    Recursion,
     /// normal exit (not really an error)
     Exit,
     /// catch-all for other errors
@@ -43,7 +45,7 @@ impl From<std::io::Error> for Error {
 }
 
 impl fmt::Debug for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}: {}", red!("cpu::Error"), self.msg) }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { write!(f, "{}", self.msg) }
 }
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

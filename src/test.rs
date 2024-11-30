@@ -32,6 +32,8 @@
 //! - `;! label = a` Passes if byte at address _label_ equals value of register A
 //! - `;! b = #'C` Passes if register B holds the value of ascii char 'C' (0x43)
 //!
+use pathid::get_filename_display_from_id;
+
 use super::*;
 #[derive(Debug)]
 pub enum RegOrAddr {
@@ -62,7 +64,8 @@ impl fmt::Display for AddrOrVal {
 
 #[derive(Debug)]
 pub struct TestCriterion {
-    pub line_number: usize,
+    pub src_file_id: usize,
+    pub src_line_num: usize,
     pub lhs_src: String,
     pub lhs: Option<RegOrAddr>, // A valid register, e.g. A, pc, or X (i.e. registers::Name::X)
     // or a memory location, e.g. $0100 or a label
@@ -71,14 +74,22 @@ pub struct TestCriterion {
                                 // or an address, e.g. $0100 or a label
 }
 impl TestCriterion {
-    pub fn new(line_number: usize, lhs_src: &str, rhs_src: &str) -> Self {
+    pub fn new(src_file_id: usize, src_line_num: usize, lhs_src: &str, rhs_src: &str) -> Self {
         TestCriterion {
-            line_number,
+            src_file_id,
+            src_line_num,
             lhs_src: lhs_src.to_string(),
             lhs: None,
             rhs_src: rhs_src.to_string(),
             rhs: None,
         }
+    }
+    pub fn origin_string(&self) -> String {
+        format!(
+            "file: {}, line: {}",
+            get_filename_display_from_id(self.src_file_id),
+            self.src_line_num
+        )
     }
     pub fn eval(&self, core: &Core) -> Result<(), Error> {
         let mut lhs_size = 1u16;

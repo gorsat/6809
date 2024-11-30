@@ -26,6 +26,7 @@ mod instructions;
 mod memory;
 mod obj;
 mod parse;
+mod pathid;
 mod program;
 mod registers;
 mod runtime;
@@ -336,6 +337,7 @@ mod tests {
                 }
                 if let Some(msg) = match process_file(pb.to_str().unwrap()) {
                     Err(e) if e.kind == ErrorKind::Runtime => None,
+                    Err(e) if e.kind == ErrorKind::Recursion => None,
                     Err(e) => Some(e.to_string()),
                     Ok(()) => Some("Ok()".to_string()),
                 } {

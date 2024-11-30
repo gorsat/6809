@@ -18,12 +18,14 @@
 //! from assembly language to machine code.
 use super::obj::*;
 use super::parse::{OperandDescriptor, Parser};
+use super::pathid::*;
 use super::test::TestCriterion;
 use super::*;
 
 use regex::Regex;
 use std::fs::File;
 use std::io::{self, BufRead};
+use std::path::PathBuf;
 
 /// The container for our assembler methods.
 pub struct Assembler {
@@ -48,18 +50,46 @@ impl Assembler {
         }
     }
 
-    /// Load an assembly language program using the supplied iterable container of program lines.
-    /// All macros are expanded during this process. The success result contains a Program object
-    /// that contains all the source lines but that has not been built.
-    pub fn load_program<I, T>(&self, src: I) -> Result<Program, Error>
-    where
-        I: IntoIterator<Item = T>,
-        T: Into<String>,
-    {
-        let mut macros = HashMap::new();
+    /*
+    TODO: Support for INC (include) directive
+    - global src_files: Vec of filenames where index in src_files is the src_file_id
+    - every line in a program and every macro definition includes src_file_id along with src_line_num
+    - stack of src_file_id we use to check for INC recursion
+    - load_asm_file(prog_lines: &mut Vec<ProgramLine>, macros: &mut HashMap<)
+    - error reporting needs to provide the relevant file name and line number(s)
+    */
+    fn load_asm_file(
+        &self, file_name: &str, path_stack: &mut Vec<PathBuf>, prog_lines: &mut Vec<ProgramLine>,
+        macros: &mut HashMap<String, Macro>,
+    ) -> Result<(), Error> {
+        // canonicalize the path based on the previous file (if there was one)
+        let path = path_stack
+            .last()
+            .map_or_else(
+                || PathBuf::from(file_name),
+                |pb| pb.to_owned().with_file_name(file_name),
+            )
+            .canonicalize()?;
+        info!("Loading file: {}", path.display());
+        // make sure we don't recurse via inclusion
+        if path_stack.contains(&path) {
+            return Err(Error::new(
+                ErrorKind::Recursion,
+                None,
+                &format!(
+                    ".include file recursion: file \"{}\" included file \"{}\"",
+                    path_stack.last().unwrap().file_name().unwrap().to_string_lossy(),
+                    file_name
+                ),
+            ));
+        }
+        let src = io::BufReader::new(File::open(&path)?)
+            .lines()
+            .collect::<Result<Vec<String>, io::Error>>()?;
+        let src_file_id = create_id_for_path(&path);
+        path_stack.push(path);
         let mut mo: Option<Macro> = None;
         let mut src_line_num = 0usize;
-        let mut prog_lines = Vec::new();
         let add_line = |pls: &mut Vec<ProgramLine>,
                         src_line_num: usize,
                         src: String,
@@ -68,6 +98,7 @@ impl Assembler {
                         operand: Option<String>| {
             let pl = ProgramLine {
                 _prog_line_num: pls.len() + 1,
+                src_file_id,
                 src_line_num,
                 src,
                 label,
@@ -82,7 +113,7 @@ impl Assembler {
         // read each line of the program and process any macro definitions and expansions along the way
         for line in src {
             src_line_num += 1;
-            let line = line.into();
+            // let line = line.into();
             let mut label = None;
             let mut operation = None;
             let mut operand = None;
@@ -93,27 +124,49 @@ impl Assembler {
                 operation = statement.get(2).map(|m| m.as_str().to_ascii_uppercase());
                 operand = statement.get(3).map(|s| s.as_str().to_string());
             }
+            if operation.as_deref() == Some(".INCLUDE") {
+                // found an ".include" line
+                if mo.is_some() {
+                    return Err(syntax_err_line!(
+                        src_file_id,
+                        src_line_num,
+                        ".INCLUDE not allowed in macro"
+                    ));
+                }
+                if let Some(file) = operand {
+                    // try to load the file
+                    self.load_asm_file(&file, path_stack, prog_lines, macros)?;
+                    continue;
+                }
+                // no filename found for .include
+                return Err(syntax_err_line!(
+                    src_file_id,
+                    src_line_num,
+                    "no file specified for .INCLUDE"
+                ));
+            }
             if operation.as_deref() == Some(".MACRO") {
                 // found a ".macro" (begin macro defn) statement
                 if mo.is_some() {
-                    return Err(syntax_err_line!(src_line_num, "illegal nested macro"));
+                    return Err(syntax_err_line!(src_file_id, src_line_num, "illegal nested macro"));
                 }
                 // get the macro's name (case insensitive!)
                 if let Some(name) = operand.map(|s| s.to_ascii_uppercase()) {
                     // make sure the name hasn't already been used
                     if macros.contains_key(&name) {
                         return Err(syntax_err_line!(
-                            format!("duplicate definition of macro \"{}\"", &name),
-                            src_line_num
+                            src_file_id,
+                            src_line_num,
+                            format!("duplicate definition of macro \"{}\"", &name)
                         ));
                     }
                     // create a new Macro object and hold it in the mo Option
-                    mo = Some(Macro::new(&name, src_line_num));
-                    add_line(&mut prog_lines, src_line_num, format!("; {}", &line), None, None, None);
+                    mo = Some(Macro::new(&name, src_file_id, src_line_num));
+                    add_line(prog_lines, src_line_num, format!("; {}", &line), None, None, None);
                     continue;
                 }
                 // no name found for this macro
-                return Err(syntax_err_line!(src_line_num, "missing macro name"));
+                return Err(syntax_err_line!(src_file_id, src_line_num, "missing macro name"));
             }
             if operation.as_deref() == Some(".ENDM") {
                 // found a ".endm" (end macro defn) statement; add completed macro
@@ -121,17 +174,17 @@ impl Assembler {
                     mo = None;
                     macros.insert(m.name.clone(), m);
                 } else {
-                    return Err(syntax_err_line!(src_line_num, "invalid macro end"));
+                    return Err(syntax_err_line!(src_file_id, src_line_num, "invalid macro end"));
                 }
-                add_line(&mut prog_lines, src_line_num, format!("; {}", &line), None, None, None);
+                add_line(prog_lines, src_line_num, format!("; {}", &line), None, None, None);
                 continue;
             }
             if let Some(mut m) = mo {
                 // we're in a macro definition; add this line to the macro
                 m.add_line(&line)
-                    .map_err(|e| line_err!(prog_lines.len(), e.kind, e.msg))?;
+                    .map_err(|e| line_err!(src_file_id, src_line_num, e.kind, e.msg))?;
                 // also add this line as a comment in the program
-                add_line(&mut prog_lines, src_line_num, format!("; {}", &line), None, None, None);
+                add_line(prog_lines, src_line_num, format!("; {}", &line), None, None, None);
                 mo = Some(m);
                 continue;
             }
@@ -140,7 +193,7 @@ impl Assembler {
                 if label.is_some() {
                     // there is also a label on this line; preserve it (on its own line) before expanding the macro
                     add_line(
-                        &mut prog_lines,
+                        prog_lines,
                         src_line_num,
                         format!("{}:", label.as_ref().unwrap()),
                         label,
@@ -150,7 +203,7 @@ impl Assembler {
                 }
                 // add a comment with some metadata about this macro instance
                 add_line(
-                    &mut prog_lines,
+                    prog_lines,
                     src_line_num,
                     format!(
                         "; Begin macro \"{}\" from line {} of original source",
@@ -180,34 +233,34 @@ impl Assembler {
                             c.get(3).map(|m| m.as_str().to_string()),
                         )
                     });
-                    add_line(&mut prog_lines, src_line_num, s, a, b, c);
+                    add_line(prog_lines, src_line_num, s, a, b, c);
                 });
                 continue;
             }
             // the line doesn't include a macro instance, so just add it as a potential statement
-            add_line(
-                &mut prog_lines,
-                src_line_num,
-                line.to_string(),
-                label,
-                operation,
-                operand,
-            );
+            add_line(prog_lines, src_line_num, line.to_string(), label, operation, operand);
         }
         // we've read through all the supplied source lines
         if let Some(m) = mo {
             // a macro definition was begun but never ended
-            return Err(syntax_err!(format!("no end found for macro \"{}\"", m.name)));
+            return Err(syntax_err_line!(
+                m.src_file_id,
+                m.src_line_num,
+                format!("no end found for macro \"{}\"", m.name)
+            ));
         }
-        Ok(Program::new(prog_lines, macros))
+        path_stack.pop();
+        Ok(())
     }
 
     /// Attempt to load and build an assembly language program from a file with the given path.
     pub fn assemble_from_file(&self, path: &str) -> Result<Program, Error> {
-        let src = io::BufReader::new(File::open(path)?)
-            .lines()
-            .collect::<Result<Vec<String>, io::Error>>()?;
-        let mut program = self.load_program(src)?;
+        let mut macros = HashMap::new();
+        let mut prog_lines = Vec::new();
+        let mut file_stack = Vec::new();
+
+        self.load_asm_file(path, &mut file_stack, &mut prog_lines, &mut macros)?;
+        let mut program = Program::new(prog_lines, macros);
         self.assemble_program(&mut program)?;
         if config::ARGS.write_files {
             _ = program.write_output_files(path);
@@ -283,11 +336,15 @@ impl Assembler {
                 // is it a result line? (i.e. lines of the form ";! <reg|addr> = <val>")
                 if let Some(c) = self.re_result_line.captures(line.src.as_str()) {
                     if c.get(1).is_none() || c.get(2).is_none() {
-                        return Err(syntax_err!("malformed test criterion"));
+                        return Err(syntax_err_line!(
+                            line.src_file_id,
+                            line.src_line_num,
+                            "malformed test criterion"
+                        ));
                     }
                     program
                         .results
-                        .push(TestCriterion::new(line.src_line_num, &c[1], &c[2]));
+                        .push(TestCriterion::new(line.src_file_id, line.src_line_num, &c[1], &c[2]));
                     return Ok(());
                 }
                 // ...or is it just a whole line of comments or whitespace?
@@ -301,7 +358,7 @@ impl Assembler {
             Ok(())
         };
         for line in program.lines.iter_mut() {
-            pre_build_one_line(line).map_err(|e| line_err!(line.src_line_num, e.kind, e.msg))?;
+            pre_build_one_line(line).map_err(|e| line_err!(line.src_file_id, line.src_line_num, e.kind, e.msg))?;
         }
         Ok(())
     }
@@ -321,7 +378,7 @@ impl Assembler {
                 // try to build the object
                 let res = op.build(expected_addr, &program.labels);
                 if let Err(e) = res {
-                    return Err(line_err!(line.src_line_num, e.kind, e.msg.as_str()));
+                    return Err(line_err!(line.src_file_id, line.src_line_num, e.kind, e.msg.as_str()));
                 }
                 let bob = res.unwrap();
                 // set our next program address based on the binary object we just built
@@ -363,7 +420,7 @@ impl Assembler {
         };
         for line in program.lines.iter_mut() {
             if let Err(e) = build_one_line(line) {
-                return Err(line_err!(line.src_line_num, e.kind, e.msg));
+                return Err(line_err!(line.src_file_id, line.src_line_num, e.kind, e.msg));
             }
         }
         changes += program.labels.eval_all_nodes()?;
@@ -375,7 +432,7 @@ impl Assembler {
         for tc in &mut program.results {
             // Each TestCriterion must be parsed AFTER build is complete so that all labels can be resolved.
             if let Err(e) = self.parser.parse_test_criterion(tc, &program.labels) {
-                return Err(line_err!(tc.line_number, e.kind, e.msg));
+                return Err(line_err!(tc.src_file_id, tc.src_line_num, e.kind, e.msg));
             }
         }
         Ok(())
@@ -394,8 +451,13 @@ impl Assembler {
         }
         // it's not a directive; see if it's an instruction
         // using ok_or_else to avoid executing the format! every time this next line is executed.
-        let desc = instructions::name_to_descriptor(line.get_operation())
-            .ok_or_else(|| syntax_err!(format!("Invalid operation: \"{}\"", line.get_operation())))?;
+        let desc = instructions::name_to_descriptor(line.get_operation()).ok_or_else(|| {
+            syntax_err_line!(
+                line.src_file_id,
+                line.src_line_num,
+                format!("Invalid operation: \"{}\"", line.get_operation())
+            )
+        })?;
         let od = if line.operand.is_none() || desc.is_inherent() {
             // the instruction uses only inherent addressing or there is no operand
             OperandDescriptor::new()
@@ -421,7 +483,11 @@ impl Assembler {
         match line.get_operation() {
             "ORG" => {
                 if line.operand.is_none() {
-                    return Err(syntax_err!("no address specified for ORG"));
+                    return Err(syntax_err_line!(
+                        line.src_file_id,
+                        line.src_line_num,
+                        "no address specified for ORG"
+                    ));
                 }
                 // org only sets the code location; parse the address expression
                 let node = self.parser.str_to_value_node(line.get_operand())?;
@@ -446,7 +512,11 @@ impl Assembler {
             "EQU" => {
                 // define a label; value can be expression
                 if line.operand.is_none() {
-                    return Err(syntax_err!("no value provided for EQU"));
+                    return Err(syntax_err_line!(
+                        line.src_file_id,
+                        line.src_line_num,
+                        "no value provided for EQU"
+                    ));
                 }
                 let node = self.parser.str_to_value_node(line.get_operand())?;
 
@@ -455,7 +525,11 @@ impl Assembler {
             }
             "FCB" | "FDB" => {
                 if line.operand.is_none() {
-                    return Err(syntax_err!("missing data for FCB/FDB"));
+                    return Err(syntax_err_line!(
+                        line.src_file_id,
+                        line.src_line_num,
+                        "missing data for FCB/FDB"
+                    ));
                 }
                 let is_bytes = line.get_operation() == "FCB";
                 // operand should a comma delimited sequence of expressions that
@@ -474,7 +548,11 @@ impl Assembler {
                 // The next occurance of that char marks the end of the string.
                 // Any characters thereafter are ignored.
                 if line.operand.is_none() {
-                    return Err(syntax_err!("no string provided for FCC"));
+                    return Err(syntax_err_line!(
+                        line.src_file_id,
+                        line.src_line_num,
+                        "no string provided for FCC"
+                    ));
                 }
                 let mut t: Option<char> = None;
                 let mut s = String::with_capacity(line.get_operand().len());
@@ -493,19 +571,31 @@ impl Assembler {
                     s.push(c)
                 }
                 if line.obj.is_none() {
-                    return Err(syntax_err!("invalid string provided for FCC"));
+                    return Err(syntax_err_line!(
+                        line.src_file_id,
+                        line.src_line_num,
+                        "invalid string provided for FCC"
+                    ));
                 }
             }
             "RMB" => {
                 if line.operand.is_none() {
-                    return Err(syntax_err!("no size specified for RMB"));
+                    return Err(syntax_err_line!(
+                        line.src_file_id,
+                        line.src_line_num,
+                        "no size specified for RMB"
+                    ));
                 }
                 let node = self.parser.str_to_value_node(line.get_operand())?;
                 line.obj = Some(Box::new(Rmb::new(node)));
             }
             "END" => {
                 if line.operand.is_some() {
-                    return Err(syntax_err!("invalid operand for END"));
+                    return Err(syntax_err_line!(
+                        line.src_file_id,
+                        line.src_line_num,
+                        "invalid operand for END"
+                    ));
                 }
                 // do nothing...
             }

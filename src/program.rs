@@ -6,6 +6,7 @@ use super::test::TestCriterion;
 use super::*;
 
 use lazy_static::lazy_static;
+use pathid::get_filename_display_from_id;
 use regex::Regex;
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -120,18 +121,27 @@ impl MacroLineSegment {
 #[derive(Debug)]
 pub struct Macro {
     pub name: String,                  // name assigned to macro by programmer
-    pub _src_line_num: usize,          // line in the source on which macro defn begins
+    pub src_file_id: usize,            // id of the source file from which this macro originated
+    pub src_line_num: usize,           // line in the source on which macro defn begins
     pub arg_count: usize,              // number of args required by macro
     lines: Vec<Vec<MacroLineSegment>>, // the non-empty lines of the macro (excluding .macro and .endm lines)
 }
 impl Macro {
-    pub fn new(name: &str, line: usize) -> Self {
+    pub fn new(name: &str, src_file_id: usize, src_line_num: usize) -> Self {
         Macro {
             name: name.to_string(),
-            _src_line_num: line,
+            src_file_id,
+            src_line_num,
             arg_count: 0,
             lines: Vec::new(),
         }
+    }
+    pub fn origin_string(&self) -> String {
+        format!(
+            "file: {}, line: {}",
+            get_filename_display_from_id(self.src_file_id),
+            self.src_line_num
+        )
     }
     pub fn add_line(&mut self, line: &str) -> Result<(), Error> {
         let s = line.split('@');
@@ -170,6 +180,7 @@ impl Macro {
 #[derive(Debug)]
 pub struct ProgramLine {
     pub _prog_line_num: usize,     // line number in program
+    pub src_file_id: usize,        // id of the source file from which this line originated
     pub src_line_num: usize,       // corresponding line number in source
     pub src: String,               // verbatim line from source
     pub label: Option<String>,     // label defined on this line
@@ -184,6 +195,13 @@ impl ProgramLine {
     pub fn get_operation(&self) -> &str { self.operation.as_ref().map_or("", String::as_str) }
     pub fn get_operand(&self) -> &str { self.operand.as_ref().map_or("", String::as_str) }
     pub fn is_inert(&self) -> bool { self.label.is_none() && self.operation.is_none() }
+    pub fn origin_string(&self) -> String {
+        format!(
+            "file: {}, line: {}",
+            get_filename_display_from_id(self.src_file_id),
+            self.src_line_num
+        )
+    }
 }
 impl fmt::Display for ProgramLine {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

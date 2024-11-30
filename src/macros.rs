@@ -27,8 +27,12 @@ macro_rules! acia_dbg {
     };
 }
 macro_rules! line_err {
-    ($line:expr, $kind:expr, $msg:expr) => {
-        Error::new($kind, None, format!("line {} {}", $line, $msg).as_str())
+    ($path_id:expr, $line:expr, $kind:expr, $msg:expr) => {
+        Error::new(
+            $kind,
+            None,
+            format!("{}:{} {}", get_filename_display_from_id($path_id), $line, $msg).as_str(),
+        )
     };
 }
 macro_rules! general_err {
@@ -47,11 +51,18 @@ macro_rules! syntax_err {
     };
 }
 macro_rules! syntax_err_line {
-    ($line:expr, $msg:expr) => {
+    ($path_id:expr, $line:expr, $msg:expr) => {
         Error::new(
             ErrorKind::Syntax,
             None,
-            format!("{}, line {}: {}", red!("Syntax Error"), $line, $msg).as_str(),
+            format!(
+                "{} {}:{} {}",
+                red!("Syntax Error"),
+                get_filename_display_from_id($path_id),
+                $line,
+                $msg
+            )
+            .as_str(),
         )
     };
 }
