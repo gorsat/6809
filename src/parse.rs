@@ -715,7 +715,7 @@ impl Parser {
         let mut err_msg: Option<String> = None;
         let mut output = Vec::new();
         while let Some(ch) = current {
-            if ch.is_whitespace() {
+            if ch.is_whitespace() || ch.eq(&';') {
                 // Give up if we hit any whitespace.
                 //    Old assemblers didn't support any whitespace within operands.
                 //    e.g., an expresssion like "(128 - 32)" would have produced an error.
@@ -723,6 +723,7 @@ impl Parser {
                 //    after the operand like this:
                 //    "LABEL: LDA ,X This is a comment"
                 //    So we just provide that same behavior here.
+                // Also bail if we hit ';' (some code starts comments without preceding whitespace)
                 break;
             }
             match ch.to_ascii_lowercase() {

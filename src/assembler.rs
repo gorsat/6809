@@ -528,9 +528,19 @@ impl Assembler {
                 // all evaluate to either byte or word depending on operation
                 // todo: does anything weird happen if ValueNode contains location reference?
                 let mut nodes = Vec::new();
-                for val in line.get_operand().split(',') {
-                    let node = self.parser.str_to_value_node(val)?;
+                for val in line
+                    .get_operand()
+                    .split(',')
+                    .map(|s| s.split_whitespace().collect::<Vec<_>>())
+                    .filter(|v| !v.is_empty())
+                {
+                    // Safety: if val is empty then we never get here
+                    let node = self.parser.str_to_value_node(val.first().unwrap())?;
                     nodes.push(node);
+                    // If any trailing chars after whitespace then this is a comment; stop parsing
+                    if val.len() > 1 {
+                        break;
+                    }
                 }
                 line.obj = Some(Box::new(Fxb::new(nodes, is_bytes)));
             }

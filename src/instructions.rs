@@ -199,6 +199,7 @@ pub mod PPPostByte {
             "PC" => Some(PC),
             "A" => Some(A),
             "B" => Some(B),
+            "D" => Some(A | B),
             "CC" => Some(CC),
             "DP" => Some(DP),
             _ => None,
