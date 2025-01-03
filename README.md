@@ -132,6 +132,27 @@ would be replaced with
 ```
 prior to the build process. Macros are not limited in terms of number of lines or parameters. I will caveat this by saying that I have not got around to adding signficant macro tests to the test suite.
 
+### Including Files
+A simple ```.include <asm_file_path>``` statement enables code reuse and basic modularity by literally inserting the contents of the referenced .asm file within the current file. So, for example, if this is file1.asm:
+```
+    lda #1
+    .include include/file2.asm
+    swi
+```
+...and file2.asm is the following:
+```
+; this is file2
+    ldb #2
+```
+...loading file1.asm results in the following combined listing:
+```
+    lda #1
+; this is file2
+    ldb #2
+    swi
+```
+...which is then assembled. You can include at multiple levels of depth, but not recursively (so, for example, file2.asm could include a file3.asm, but it would cause an error if file2.asm or file3.asm included file1.asm).
+
 ### Directives
 The following assembler directives are suppported:
 
