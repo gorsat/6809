@@ -139,7 +139,7 @@ A simple ```.include <asm_file_path>``` statement enables code reuse and basic m
     .include include/file2.asm
     swi
 ```
-...and file2.asm is the following:
+...and ```./include/file2.asm``` is the following:
 ```
 ; this is file2
     ldb #2
